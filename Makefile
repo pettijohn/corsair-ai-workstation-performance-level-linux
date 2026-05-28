@@ -1,7 +1,7 @@
 KDIR ?= /lib/modules/$(shell uname -r)/build
 
-obj-m += corsair_wmi_probe.o
-corsair_wmi_probe-y := src/corsair_wmi_probe.o
+obj-m += corsair_wmi.o
+corsair_wmi-y := src/corsair_wmi.o
 
 all:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) modules

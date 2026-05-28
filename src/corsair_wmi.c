@@ -332,7 +332,7 @@ MODULE_DEVICE_TABLE(wmi, corsair_wmi_id_table);
 
 static struct wmi_driver corsair_wmi_driver = {
 	.driver = {
-		.name = "corsair-ai-workstation-performance",
+		.name = "corsair_wmi",
 	},
 	.id_table = corsair_wmi_id_table,
 	.no_singleton = true,

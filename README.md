@@ -53,10 +53,19 @@ One commonly observed payload is:
 That event is not a selector mode event and should be ignored by a production
 driver unless additional behavior is intentionally added for it.
 
+## Supported Target
+
+This project intentionally targets Ubuntu 26.04 with Linux 7.0+ kernels. Older
+distributions and older kernel toolchains are out of scope for now.
+
+The dev container is also based on Ubuntu 26.04 so its compiler, glibc, and
+kernel tooling match the supported host family closely enough for out-of-tree
+module builds.
+
 ## Repository Contents
 
 ```text
-src/corsair_wmi_probe.c          C WMI/sysfs kernel shim
+src/corsair_wmi.c                C WMI/sysfs kernel shim
 rust/corsair_performance_mode_core/
                                   Rust no_std-friendly decode crate
 Cargo.toml                        Rust crate manifest
@@ -90,18 +99,28 @@ Build:
 ./scripts/build.sh
 ```
 
+Loading a kernel module changes the host kernel, so the `insmod`, `rmmod`, and
+`dmesg` commands below must run on the host or in a container started with the
+needed kernel-module privileges. A normal VS Code dev container can build and
+sign the module, but may not be allowed to load it.
+
 If Secure Boot is enabled, sign and enroll a local Machine Owner Key:
 
 ```sh
 ./scripts/sign_for_secure_boot.sh
-sudo mokutil --import mok/corsair_wmi_probe.der
+sudo mokutil --import mok/corsair_wmi.der
 ```
 
-Reboot, enroll the key in the blue MOK manager screen, then load:
+If this repository already has an older ignored `mok/corsair_wmi_probe.der`
+certificate from the prototype phase, the signing script will reuse it so an
+already-enrolled MOK continues to work.
+
+Reboot and enroll the key in the blue MOK manager screen if needed. To watch
+the probe logs and then load:
 
 ```sh
-sudo insmod corsair_wmi_probe.ko query_current=1
 sudo dmesg -w
+sudo insmod corsair_wmi.ko
 ```
 
 Press the front-panel selector. The prototype should log decoded mode events.
@@ -115,13 +134,12 @@ It also exposes read-only sysfs attributes on the method WMI device:
 Unload:
 
 ```sh
-sudo rmmod corsair_wmi_probe
+sudo rmmod corsair_wmi
 ```
 
 Useful module parameters:
 
 ```text
-query_current=1     Query method id 2 during probe and log the decoded mode
 log_other_events=1  Log non-selector WMI events for investigation
 query_blocks=1      Query WMI data blocks; currently not needed for mode support
 ```
@@ -231,17 +249,18 @@ The WMI method/event path is the working approach.
 
 ## Rust Driver Notes
 
-Rust is attractive for the final driver, but there are practical kernel issues:
+The supported target is Ubuntu 26.04 with Linux 7.0+ kernels, so the project can
+lean on a modern Rust and kernel toolchain instead of carrying compatibility for
+older distributions. The remaining practical issues are kernel integration
+issues rather than old-distro support issues:
 
-- Rust-for-Linux support depends on the target kernel configuration. Many distro
-  kernels still do not enable enough Rust support for comfortable out-of-tree
-  modules.
 - The Linux WMI subsystem may not have complete safe Rust abstractions in the
-  target kernel version.
+  target Ubuntu 26.04 kernel.
 - If WMI bindings are missing, a Rust driver may need a small C shim or custom
   bindings around `struct wmi_driver`, `wmidev_evaluate_method()`, notify
   callbacks, and sysfs attributes.
-- DKMS packaging for out-of-tree Rust modules is less routine than for C modules.
+- DKMS packaging for out-of-tree Rust modules is less routine than for C modules,
+  even on modern kernels.
 
 A practical path is:
 

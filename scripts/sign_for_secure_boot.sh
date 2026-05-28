@@ -3,8 +3,13 @@ set -euo pipefail
 
 src_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 key_dir="$src_dir/mok"
-module="$src_dir/corsair_wmi_probe.ko"
+module="$src_dir/corsair_wmi.ko"
 sign_file="/usr/src/linux-headers-$(uname -r)/scripts/sign-file"
+key_base="$key_dir/corsair_wmi"
+
+if [ ! -f "$key_base.key" ] && [ -f "$key_dir/corsair_wmi_probe.key" ]; then
+  key_base="$key_dir/corsair_wmi_probe"
+fi
 
 if [ ! -f "$module" ]; then
   echo "Missing module: $module" >&2
@@ -19,29 +24,30 @@ fi
 
 mkdir -p "$key_dir"
 
-if [ ! -f "$key_dir/corsair_wmi_probe.key" ] || [ ! -f "$key_dir/corsair_wmi_probe.der" ]; then
+if [ ! -f "$key_base.key" ] || [ ! -f "$key_base.der" ]; then
+  key_base="$key_dir/corsair_wmi"
   openssl req \
     -new \
     -x509 \
     -newkey rsa:2048 \
-    -keyout "$key_dir/corsair_wmi_probe.key" \
+    -keyout "$key_base.key" \
     -outform DER \
-    -out "$key_dir/corsair_wmi_probe.der" \
+    -out "$key_base.der" \
     -nodes \
     -days 36500 \
-    -subj "/CN=Local CORSAIR WMI Probe Module Signing/"
+    -subj "/CN=Local CORSAIR WMI Module Signing/"
 fi
 
 "$sign_file" sha256 \
-  "$key_dir/corsair_wmi_probe.key" \
-  "$key_dir/corsair_wmi_probe.der" \
+  "$key_base.key" \
+  "$key_base.der" \
   "$module"
 
 echo "Signed: $module"
-echo "Certificate: $key_dir/corsair_wmi_probe.der"
+echo "Certificate: $key_base.der"
 echo
 echo "If Secure Boot is enabled, enroll the certificate once with:"
-echo "  sudo mokutil --import '$key_dir/corsair_wmi_probe.der'"
+echo "  sudo mokutil --import '$key_base.der'"
 echo
 echo "Then reboot, choose Enroll MOK in the blue firmware screen, and load:"
 echo "  sudo insmod '$module'"
