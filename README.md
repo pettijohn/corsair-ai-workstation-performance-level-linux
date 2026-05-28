@@ -56,7 +56,10 @@ driver unless additional behavior is intentionally added for it.
 ## Repository Contents
 
 ```text
-src/corsair_wmi_probe.c          Prototype C WMI driver
+src/corsair_wmi_probe.c          C WMI/sysfs kernel shim
+rust/corsair_performance_mode_core/
+                                  Rust no_std-friendly decode crate
+Cargo.toml                        Rust crate manifest
 Makefile                         Out-of-tree kernel module Makefile
 scripts/build.sh                 Builds the prototype module in /tmp
 scripts/sign_for_secure_boot.sh  Generates a local MOK cert and signs the module
@@ -65,6 +68,19 @@ LICENSE                          Repository license
 
 The local Secure Boot private key is intentionally ignored. Each user must
 generate and enroll their own key.
+
+## Dev Container
+
+The dev container installs Rust tooling plus the C/kernel tools needed for the
+prototype module. It also bind-mounts the host's `/lib/modules` and `/usr/src`
+read-only so Kbuild can find matching kernel headers.
+
+After changing `.devcontainer/Dockerfile` or `.devcontainer/devcontainer.json`,
+rebuild the container before running the kernel module build:
+
+```sh
+./scripts/build.sh
+```
 
 ## Running The Prototype
 
@@ -89,6 +105,12 @@ sudo dmesg -w
 ```
 
 Press the front-panel selector. The prototype should log decoded mode events.
+It also exposes read-only sysfs attributes on the method WMI device:
+
+```text
+/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode
+/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode_raw
+```
 
 Unload:
 
@@ -103,6 +125,27 @@ query_current=1     Query method id 2 during probe and log the decoded mode
 log_other_events=1  Log non-selector WMI events for investigation
 query_blocks=1      Query WMI data blocks; currently not needed for mode support
 ```
+
+## Rust Core
+
+The Rust crate contains the stable decode contract in a form that can be tested
+without loading a kernel module:
+
+```sh
+cargo test
+cargo clippy --all-targets -- -D warnings
+```
+
+It is deliberately small and `no_std`-friendly:
+
+- `Mode::from_query_value()`
+- `Mode::from_event_detail()`
+- `is_selector_event()`
+- `decode_selector_event()`
+
+The C kernel shim currently mirrors this tiny decode logic because the Linux WMI
+boundary is still C. The intent is to keep the hardware contract tested in Rust
+while the WMI/sysfs integration remains in the kernel-facing shim.
 
 ## Clean-Room Driver Implementation Guide
 
@@ -131,7 +174,7 @@ payload[1] in { 0x11, 0x12, 0x13, 0x14 }
 6. Decode `payload[1]` as the new mode and update the cached mode.
 7. Notify userspace when the cached mode changes.
 
-Suggested sysfs interface:
+Implemented sysfs interface:
 
 ```text
 /sys/bus/wmi/devices/<method-guid>/current_mode
@@ -163,9 +206,9 @@ Suggested raw values:
 255 = unknown
 ```
 
-Mode-change notifications can be exposed with `sysfs_notify()` on
-`current_mode` and `current_mode_raw`. A userspace daemon can then poll the
-sysfs file or use inotify-like mechanisms depending on the desired integration.
+Mode-change notifications are emitted with `sysfs_notify()` on `current_mode`
+and `current_mode_raw`. A userspace daemon can then poll the sysfs file or use
+inotify-like mechanisms depending on the desired integration.
 
 Do not call method id `1` for read-only support. Method id `1` is treated as the
 mode setter by the firmware interface.

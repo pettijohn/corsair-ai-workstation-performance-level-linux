@@ -18,11 +18,13 @@
     }
   },
   "mounts": [
+    "source=/lib/modules,target=/lib/modules,type=bind,readonly",
+    "source=/usr/src,target=/usr/src,type=bind,readonly",
     "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind",
     "source=vscode-extensions,target=/root/.vscode-server/extensions,type=volume",
     "source=vscode-extensions-cache,target=/root/.vscode-server/extensionsCache,type=volume",
     "source=vscode-global-storage,target=/root/.vscode-server/data/User/globalStorage,type=volume",
     "source=vscode-machine,target=/root/.vscode-server/data/Machine,type=volume"
   ],
-  "postCreateCommand": "rustup component add rustfmt clippy"
+  "postCreateCommand": "rustup component add rustfmt clippy rust-src"
 }

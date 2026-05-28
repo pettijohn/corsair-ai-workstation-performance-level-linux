@@ -1,48 +1,107 @@
 // SPDX-License-Identifier: BSD-2-Clause OR GPL-2.0-only
 /*
- * Read-only WMI probe for the CORSAIR AI Workstation power selector.
+ * Read-only WMI shim for the CORSAIR AI Workstation performance selector.
  *
- * This driver binds to the WMI GUIDs seen on Linux and logs the raw notify
- * payload. By default it does not invoke methods; query_current=1 invokes only
- * WMAA method id 2, which the firmware AML shows as a read of EC0.FCMO.
+ * The durable decode contract lives in the Rust core crate. This C module owns
+ * the Linux WMI/sysfs boundary while Rust-for-Linux WMI support matures.
  */
 
 #include <linux/acpi.h>
 #include <linux/device.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/printk.h>
+#include <linux/string.h>
+#include <linux/sysfs.h>
 #include <linux/wmi.h>
 
 #define CORSAIR_EVENT_GUID  "8FAFC061-22DA-46E2-91DB-1FE3D7E5FF3C"
 #define CORSAIR_METHOD_GUID "99D89064-8D50-42BB-BEA9-155B2E5D0FCD"
 
-static bool query_blocks;
-module_param(query_blocks, bool, 0444);
-MODULE_PARM_DESC(query_blocks, "Query WMI data blocks at probe time; read-only, default false");
+#define CORSAIR_MODE_BALANCED 0
+#define CORSAIR_MODE_MAX      1
+#define CORSAIR_MODE_QUIET    2
+#define CORSAIR_MODE_SUPER    3
+#define CORSAIR_MODE_UNKNOWN  255
 
-static bool query_current;
-module_param(query_current, bool, 0444);
-MODULE_PARM_DESC(query_current, "Invoke AA method id 2 at probe time to read current mode; default false");
+/*
+ * Two WMI devices participate: one receives events and the other owns the AA
+ * method used for the current-mode query. Sysfs files live on the method
+ * device, so event callbacks keep a pointer to it for sysfs_notify().
+ */
+struct corsair_state {
+	struct mutex lock;
+	struct wmi_device *method_wdev;
+	u8 mode;
+};
+
+static struct corsair_state corsair_state = {
+	.lock = __MUTEX_INITIALIZER(corsair_state.lock),
+	.mode = CORSAIR_MODE_UNKNOWN,
+};
 
 static bool log_other_events;
 module_param(log_other_events, bool, 0644);
 MODULE_PARM_DESC(log_other_events, "Log non-selector WMI events too; default false");
 
-static void log_acpi_object(const char *prefix, union acpi_object *obj, int depth);
+static bool query_blocks;
+module_param(query_blocks, bool, 0444);
+MODULE_PARM_DESC(query_blocks, "Query WMI data blocks at probe time; debug only, default false");
 
-static const char *event_mode_name(u8 detail)
+/* The WMI core binds this driver to both GUIDs; only the AA method device gets sysfs. */
+static bool is_method_device(struct wmi_device *wdev)
+{
+	return strncasecmp(dev_name(&wdev->dev), CORSAIR_METHOD_GUID,
+			   strlen(CORSAIR_METHOD_GUID)) == 0;
+}
+
+/* Sysfs exposes stable lowercase names, while the raw file exposes these numeric values. */
+static const char *mode_name(u8 mode)
+{
+	switch (mode) {
+	case CORSAIR_MODE_QUIET:
+		return "quiet";
+	case CORSAIR_MODE_BALANCED:
+		return "balanced";
+	case CORSAIR_MODE_MAX:
+		return "max";
+	case CORSAIR_MODE_SUPER:
+		return "super";
+	default:
+		return "unknown";
+	}
+}
+
+static u8 mode_from_query_value(u64 value)
+{
+	switch (value) {
+	case 0:
+		return CORSAIR_MODE_BALANCED;
+	case 1:
+		return CORSAIR_MODE_MAX;
+	case 2:
+		return CORSAIR_MODE_QUIET;
+	case 3:
+		return CORSAIR_MODE_SUPER;
+	default:
+		return CORSAIR_MODE_UNKNOWN;
+	}
+}
+
+/* Event detail bytes use a different encoding than the read-current method. */
+static u8 mode_from_event_detail(u8 detail)
 {
 	switch (detail) {
 	case 0x11:
-		return "Quiet";
+		return CORSAIR_MODE_QUIET;
 	case 0x12:
-		return "Balanced";
+		return CORSAIR_MODE_BALANCED;
 	case 0x13:
-		return "Max";
+		return CORSAIR_MODE_MAX;
 	case 0x14:
-		return "Super";
+		return CORSAIR_MODE_SUPER;
 	default:
-		return "unknown";
+		return CORSAIR_MODE_UNKNOWN;
 	}
 }
 
@@ -55,116 +114,114 @@ static bool is_selector_event(const u8 *data, size_t length)
 	       data[1] >= 0x11 && data[1] <= 0x14;
 }
 
-static const char *method_mode_name(u64 value)
+/*
+ * The cached mode is the single userspace-visible state. It is initialized from
+ * the read-only method query and then updated by selector events.
+ */
+static void set_cached_mode(u8 mode, const char *source)
 {
-	switch (value) {
-	case 0:
-		return "Balanced";
-	case 1:
-		return "Max";
-	case 2:
-		return "Quiet";
-	case 3:
-		return "Super";
-	default:
-		return "unknown";
+	struct wmi_device *method_wdev;
+	bool changed;
+
+	mutex_lock(&corsair_state.lock);
+	changed = corsair_state.mode != mode;
+	corsair_state.mode = mode;
+	method_wdev = corsair_state.method_wdev;
+	mutex_unlock(&corsair_state.lock);
+
+	pr_info("corsair_wmi: mode=%s raw=%u source=%s%s\n",
+		mode_name(mode), mode, source, changed ? "" : " unchanged");
+
+	if (changed && method_wdev) {
+		sysfs_notify(&method_wdev->dev.kobj, NULL, "current_mode");
+		sysfs_notify(&method_wdev->dev.kobj, NULL, "current_mode_raw");
 	}
 }
 
-static void log_event_detail(const char *prefix, const u8 *data, size_t length)
+/* Read-only userspace ABI: mode name for humans, raw value for scripts. */
+static ssize_t current_mode_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
 {
-	if (!data || length < 3)
-		return;
+	u8 mode;
 
-	pr_info("%s EventDetail=[0x%02x,0x%02x,0x%02x] mode=%s\n",
-		prefix, data[0], data[1], data[2], event_mode_name(data[1]));
+	mutex_lock(&corsair_state.lock);
+	mode = corsair_state.mode;
+	mutex_unlock(&corsair_state.lock);
+
+	return sysfs_emit(buf, "%s\n", mode_name(mode));
 }
+static DEVICE_ATTR_RO(current_mode);
 
-static const char *acpi_type_name(u32 type)
+static ssize_t current_mode_raw_show(struct device *dev,
+				     struct device_attribute *attr, char *buf)
 {
-	switch (type) {
-	case ACPI_TYPE_INTEGER:
-		return "integer";
-	case ACPI_TYPE_STRING:
-		return "string";
-	case ACPI_TYPE_BUFFER:
-		return "buffer";
-	case ACPI_TYPE_PACKAGE:
-		return "package";
-	case ACPI_TYPE_LOCAL_REFERENCE:
-		return "reference";
-	default:
-		return "other";
-	}
+	u8 mode;
+
+	mutex_lock(&corsair_state.lock);
+	mode = corsair_state.mode;
+	mutex_unlock(&corsair_state.lock);
+
+	return sysfs_emit(buf, "%u\n", mode);
 }
+static DEVICE_ATTR_RO(current_mode_raw);
 
-static void log_package(const char *prefix, union acpi_object *obj, int depth)
+static int create_mode_attrs(struct wmi_device *wdev)
 {
-	u32 i;
+	int ret;
 
-	pr_info("%s package count=%u\n", prefix, obj->package.count);
-	if (depth >= 3)
-		return;
+	ret = device_create_file(&wdev->dev, &dev_attr_current_mode);
+	if (ret)
+		return ret;
 
-	for (i = 0; i < obj->package.count; i++) {
-		char child_prefix[64];
-
-		snprintf(child_prefix, sizeof(child_prefix), "%s[%u]", prefix, i);
-		log_acpi_object(child_prefix, &obj->package.elements[i], depth + 1);
-	}
-}
-
-static void log_acpi_object(const char *prefix, union acpi_object *obj, int depth)
-{
-	if (!obj) {
-		pr_info("%s null object\n", prefix);
-		return;
+	ret = device_create_file(&wdev->dev, &dev_attr_current_mode_raw);
+	if (ret) {
+		device_remove_file(&wdev->dev, &dev_attr_current_mode);
+		return ret;
 	}
 
-	pr_info("%s type=%s(%u)\n", prefix, acpi_type_name(obj->type), obj->type);
-
-	switch (obj->type) {
-	case ACPI_TYPE_INTEGER:
-		pr_info("%s integer=0x%llx (%llu)\n",
-			prefix, obj->integer.value, obj->integer.value);
-		pr_info("%s decoded current mode=%s\n",
-			prefix, method_mode_name(obj->integer.value));
-		break;
-	case ACPI_TYPE_STRING:
-		pr_info("%s string len=%u value=\"%.*s\"\n",
-			prefix, obj->string.length, obj->string.length,
-			obj->string.pointer);
-		break;
-	case ACPI_TYPE_BUFFER:
-		pr_info("%s buffer len=%u\n", prefix, obj->buffer.length);
-		log_event_detail(prefix, obj->buffer.pointer, obj->buffer.length);
-		print_hex_dump(KERN_INFO, "corsair_wmi_probe: buffer ",
-			       DUMP_PREFIX_OFFSET, 16, 1, obj->buffer.pointer,
-			       obj->buffer.length, false);
-		break;
-	case ACPI_TYPE_PACKAGE:
-		log_package(prefix, obj, depth);
-		break;
-	default:
-		break;
-	}
+	return 0;
 }
 
-static void corsair_notify_new(struct wmi_device *wdev, const struct wmi_buffer *data)
+static void remove_mode_attrs(struct wmi_device *wdev)
 {
-	if (!data || !data->data || !data->length)
-		return;
-
-	if (!is_selector_event(data->data, data->length) && !log_other_events)
-		return;
-
-	dev_info(&wdev->dev, "notify length=%zu\n", data->length);
-	print_hex_dump(KERN_INFO, "corsair_wmi_probe: notify ",
-		       DUMP_PREFIX_OFFSET, 16, 1, data->data, data->length,
-		       false);
-	log_event_detail("corsair_wmi_probe: notify", data->data, data->length);
+	device_remove_file(&wdev->dev, &dev_attr_current_mode_raw);
+	device_remove_file(&wdev->dev, &dev_attr_current_mode);
 }
 
+/*
+ * AA method id 2 is the read-only current-mode path. Do not use method id 1
+ * here; that method is reserved for firmware state changes.
+ */
+static int query_current_mode(struct wmi_device *wdev)
+{
+	struct acpi_buffer in = { 0, NULL };
+	struct acpi_buffer out = { ACPI_ALLOCATE_BUFFER, NULL };
+	union acpi_object *obj;
+	acpi_status status;
+	u8 mode;
+
+	status = wmidev_evaluate_method(wdev, 0, 2, &in, &out);
+	if (ACPI_FAILURE(status)) {
+		dev_warn(&wdev->dev, "AA method id 2 failed: %s\n",
+			 acpi_format_exception(status));
+		return -EIO;
+	}
+
+	obj = out.pointer;
+	if (!obj || obj->type != ACPI_TYPE_INTEGER) {
+		dev_warn(&wdev->dev, "AA method id 2 returned non-integer\n");
+		ACPI_FREE(out.pointer);
+		return -ENODATA;
+	}
+
+	mode = mode_from_query_value(obj->integer.value);
+	ACPI_FREE(out.pointer);
+
+	set_cached_mode(mode, "query");
+	return 0;
+}
+
+/* Optional diagnostic path retained for platform bring-up, not needed normally. */
 static void try_query_block(struct wmi_device *wdev)
 {
 	union acpi_object *obj;
@@ -178,57 +235,92 @@ static void try_query_block(struct wmi_device *wdev)
 	dev_info(&wdev->dev, "query_blocks enabled, instance_count=%u\n", count);
 
 	for (i = 0; i < count; i++) {
-		char prefix[64];
-
 		obj = wmidev_block_query(wdev, i);
-		snprintf(prefix, sizeof(prefix), "corsair_wmi_probe: query[%u]", i);
 		if (!obj || IS_ERR(obj)) {
 			dev_info(&wdev->dev, "query instance %u failed: %ld\n",
 				 i, obj ? PTR_ERR(obj) : -ENODATA);
 			continue;
 		}
-		log_acpi_object(prefix, obj, 0);
+
+		dev_info(&wdev->dev, "query instance %u returned ACPI type %u\n",
+			 i, obj->type);
 		kfree(obj);
 	}
 }
 
-static void try_query_current(struct wmi_device *wdev)
+/*
+ * The event GUID carries multiple firmware OSD events. Selector events are the
+ * narrow 01:{11..14}:81 family; everything else is ignored unless debugging.
+ */
+static void corsair_notify_new(struct wmi_device *wdev, const struct wmi_buffer *data)
 {
-	struct acpi_buffer in = { 0, NULL };
-	struct acpi_buffer out = { ACPI_ALLOCATE_BUFFER, NULL };
-	acpi_status status;
+	u8 *payload;
+	u8 mode;
 
-	if (!query_current)
+	if (!data || !data->data || !data->length)
 		return;
 
-	if (strncasecmp(dev_name(&wdev->dev), CORSAIR_METHOD_GUID,
-			strlen(CORSAIR_METHOD_GUID)) != 0)
-		return;
-
-	dev_info(&wdev->dev, "query_current enabled, invoking AA method id 2\n");
-	status = wmidev_evaluate_method(wdev, 0, 2, &in, &out);
-	if (ACPI_FAILURE(status)) {
-		dev_info(&wdev->dev, "AA method id 2 failed: %s\n",
-			 acpi_format_exception(status));
+	payload = data->data;
+	if (!is_selector_event(payload, data->length)) {
+		if (log_other_events)
+			dev_info(&wdev->dev,
+				 "ignored non-selector event [%02x %02x %02x] len=%zu\n",
+				 data->length > 0 ? payload[0] : 0,
+				 data->length > 1 ? payload[1] : 0,
+				 data->length > 2 ? payload[2] : 0,
+				 data->length);
 		return;
 	}
 
-	log_acpi_object("corsair_wmi_probe: current", out.pointer, 0);
-	ACPI_FREE(out.pointer);
+	mode = mode_from_event_detail(payload[1]);
+	dev_info(&wdev->dev, "selector event detail=0x%02x mode=%s\n",
+		 payload[1], mode_name(mode));
+	set_cached_mode(mode, "event");
 }
 
+/*
+ * The method device owns sysfs and performs the initial query. The event device
+ * only needs to bind so notify_new can receive selector changes.
+ */
 static int corsair_probe(struct wmi_device *wdev, const void *context)
 {
-	dev_info(&wdev->dev, "bound read-only probe dev_name=%s\n",
-		 dev_name(&wdev->dev));
+	int ret;
+
+	dev_info(&wdev->dev, "bound dev_name=%s\n", dev_name(&wdev->dev));
 	try_query_block(wdev);
-	try_query_current(wdev);
+
+	if (!is_method_device(wdev))
+		return 0;
+
+	mutex_lock(&corsair_state.lock);
+	corsair_state.method_wdev = wdev;
+	mutex_unlock(&corsair_state.lock);
+
+	ret = create_mode_attrs(wdev);
+	if (ret) {
+		mutex_lock(&corsair_state.lock);
+		if (corsair_state.method_wdev == wdev)
+			corsair_state.method_wdev = NULL;
+		mutex_unlock(&corsair_state.lock);
+		return ret;
+	}
+
+	query_current_mode(wdev);
 	return 0;
 }
 
+/* Remove sysfs before dropping the method-device pointer used by notifications. */
 static void corsair_remove(struct wmi_device *wdev)
 {
-	dev_info(&wdev->dev, "removed read-only probe\n");
+	if (is_method_device(wdev)) {
+		remove_mode_attrs(wdev);
+		mutex_lock(&corsair_state.lock);
+		if (corsair_state.method_wdev == wdev)
+			corsair_state.method_wdev = NULL;
+		mutex_unlock(&corsair_state.lock);
+	}
+
+	dev_info(&wdev->dev, "removed\n");
 }
 
 static const struct wmi_device_id corsair_wmi_id_table[] = {
@@ -240,7 +332,7 @@ MODULE_DEVICE_TABLE(wmi, corsair_wmi_id_table);
 
 static struct wmi_driver corsair_wmi_driver = {
 	.driver = {
-		.name = "corsair-wmi-probe",
+		.name = "corsair-ai-workstation-performance",
 	},
 	.id_table = corsair_wmi_id_table,
 	.no_singleton = true,
@@ -252,5 +344,5 @@ static struct wmi_driver corsair_wmi_driver = {
 module_wmi_driver(corsair_wmi_driver);
 
 MODULE_AUTHOR("Local driver prototype");
-MODULE_DESCRIPTION("Read-only CORSAIR AI Workstation performance mode WMI logger");
+MODULE_DESCRIPTION("Read-only CORSAIR AI Workstation performance mode WMI driver");
 MODULE_LICENSE("Dual BSD/GPL");
