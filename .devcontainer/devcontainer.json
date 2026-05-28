@@ -1,0 +1,28 @@
+{
+  "name": "Rust",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {},
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "openai.chatgpt"
+      ],
+      "settings": {
+        "rust-analyzer.cargo.buildScripts.enable": true,
+        "rust-analyzer.procMacro.enable": true
+      }
+    }
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind",
+    "source=vscode-extensions,target=/root/.vscode-server/extensions,type=volume",
+    "source=vscode-extensions-cache,target=/root/.vscode-server/extensionsCache,type=volume",
+    "source=vscode-global-storage,target=/root/.vscode-server/data/User/globalStorage,type=volume",
+    "source=vscode-machine,target=/root/.vscode-server/data/Machine,type=volume"
+  ],
+  "postCreateCommand": "rustup component add rustfmt clippy"
+}
