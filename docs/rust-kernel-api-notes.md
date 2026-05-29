@@ -81,12 +81,13 @@ needs a GPL-compatible module license if it uses those symbols.
 
 ## Current Rust Port Boundary
 
-Step 4.3 keeps the Rust module to bind/unbind only:
+The Rust module has moved past the initial bind/unbind skeleton. It now owns the
+active driver path:
 
-- no method query yet
-- no sysfs attributes yet
-- no mode decoding yet
+- WMI driver registration
+- method id `2` current-mode query
+- selector event filtering and decoding
+- read-only `current_mode` and `current_mode_raw` sysfs attributes
 
-The skeleton registers with the WMI bus and logs callback activity. The
-production C module remains available as `corsair_wmi.ko` until the Rust module
-matches its query, event, and sysfs behavior.
+The old C shim has been retired from active source; its implementation history
+is available in git.

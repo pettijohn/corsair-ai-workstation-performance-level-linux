@@ -13,6 +13,7 @@ pub(crate) enum Mode {
 }
 
 impl Mode {
+    /// Convert the cached sysfs raw byte back into an enum.
     pub(crate) const fn from_raw(raw: u8) -> Self {
         match raw {
             0 => Self::Balanced,
@@ -23,6 +24,7 @@ impl Mode {
         }
     }
 
+    /// Decode AA method id 2's integer result.
     pub(crate) const fn from_query_value(value: u64) -> Self {
         match value {
             0 => Self::Balanced,
@@ -33,6 +35,7 @@ impl Mode {
         }
     }
 
+    /// Decode selector event detail byte from payloads matching 01 xx 81.
     pub(crate) const fn from_event_detail(detail: u8) -> Self {
         match detail {
             0x11 => Self::Quiet,

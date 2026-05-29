@@ -13,7 +13,7 @@ fi
 
 if [ ! -f "$module" ]; then
   echo "Missing module: $module" >&2
-  echo "Run: $src_dir/scripts/build.sh or pass a built .ko path" >&2
+  echo "Run: $src_dir/scripts/build.sh" >&2
   exit 1
 fi
 

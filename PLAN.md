@@ -126,11 +126,9 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
       - no sysfs yet
       - log enough to prove the Rust callbacks fire
 
-      Deliverable: a signed Rust `rust/corsair_wmi_kernel/corsair_wmi_rust.ko`
-      that binds to both WMI GUIDs and can be loaded/unloaded on the host.
-      The artifact keeps a temporary `_rust` suffix so the known-good C
-      `corsair_wmi.ko` is not replaced before the Rust query/event/sysfs port
-      is complete.
+      Deliverable: a signed Rust WMI skeleton that binds to both WMI GUIDs and
+      can be loaded/unloaded on the host. This was later promoted to the final
+      `corsair_wmi.ko` artifact in step 4.7.
 
    4.4. **Port read-only method query** `[complete]`
 
@@ -171,14 +169,14 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
       `current_mode_raw` attributes as the C driver. Host-side `cat` tests still
       need to be run on hardware.
 
-   4.7. **Retire the C shim**
+   4.7. **Retire the C shim** `[complete]`
 
       Once Rust binding, query, event, and sysfs behavior match the C driver:
 
-      - remove `src/corsair_wmi.c`
-      - update `Makefile`/scripts to build only the Rust module
+      - removed `src/corsair_wmi.c`
+      - updated `Makefile`/scripts to build only the Rust module
       - keep the Rust core crate tests
-      - keep the C implementation history only in git, not active source
+      - kept the C implementation history only in git, not active source
 
       Deliverable: no C source is required to build/load the driver.
 
@@ -218,4 +216,5 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
 
    We also need access to matching host kernel headers. In a devcontainer, that usually means mounting `/lib/modules` and `/usr/src` from the host, or installing exact matching headers inside the container if available.
 
-**My recommendation:** prototype as `Rust core logic + C WMI/sysfs shim` first. That gets us a real driver quickly, keeps the risky kernel API surface in known-working C, and still moves the durable logic into Rust. Once that works, we can push more of the driver across the Rust boundary if the kernel/toolchain cooperates.
+The initial Rust-core-plus-C-shim path has served its purpose. The active driver
+path is now the all-Rust kernel module.

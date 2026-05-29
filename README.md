@@ -1,14 +1,16 @@
 # CORSAIR AI Workstation Performance Mode Linux Driver
 
-This repository is a starting point for a Linux driver that exposes the CORSAIR
+This repository is a Linux driver that exposes the CORSAIR
 AI Workstation front-panel Performance Mode Selector state.
 
-The goal is read-only support:
+![Button on Corsair AI Workstation](Overview.png)
+
+The driver has read-only support:
 
 - report the current mode at driver probe time
 - report mode changes when the front-panel selector is pressed
-- expose the current mode to userspace through sysfs
-- avoid changing firmware state from Linux
+- expose the current mode to userspace through sysfs `cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode`
+- does not change firmware state from Linux
 
 ## Current Status
 
@@ -65,13 +67,14 @@ module builds.
 ## Repository Contents
 
 ```text
-src/corsair_wmi.c                C WMI/sysfs kernel shim
+rust/corsair_wmi_kernel/         Rust WMI/sysfs kernel driver
 rust/corsair_performance_mode_core/
                                   Rust no_std-friendly decode crate
 rust_kernel_probe/               Minimal Rust kernel module smoke test
 Cargo.toml                        Rust crate manifest
-Makefile                         Out-of-tree kernel module Makefile
-scripts/build.sh                 Builds the prototype module in /tmp
+Makefile                         Convenience wrapper for the Rust module build
+rust/corsair_wmi_kernel/Makefile Kbuild file for the out-of-tree Rust module
+scripts/build.sh                 Builds the Rust kernel module
 scripts/sign_for_secure_boot.sh  Generates a local MOK cert and signs the module
 scripts/check_kernel_rust.sh      Checks/builds the Rust kernel smoke module
 LICENSE                          Repository license
@@ -82,8 +85,8 @@ generate and enroll their own key.
 
 ## Dev Container
 
-The dev container installs Rust tooling plus the C/kernel tools needed for the
-prototype module. It also bind-mounts the host's `/lib/modules` and `/usr/src`
+The dev container installs Rust tooling plus the kernel tools needed for the
+driver module. It also bind-mounts the host's `/lib/modules` and `/usr/src`
 read-only so Kbuild can find matching kernel headers.
 
 Kernel Rust builds use Ubuntu's packaged Rust compiler to match the
@@ -103,7 +106,7 @@ rebuild the container before running the kernel module build:
 ./scripts/build.sh
 ```
 
-## Running The Prototype
+## Running The Driver
 
 Build:
 
@@ -124,7 +127,7 @@ sudo mokutil --import mok/corsair_wmi.der
 ```
 
 If this repository already has an older ignored `mok/corsair_wmi_probe.der`
-certificate from the prototype phase, the signing script will reuse it so an
+certificate from early local testing, the signing script will reuse it so an
 already-enrolled MOK continues to work.
 
 Reboot and enroll the key in the blue MOK manager screen if needed. To watch
@@ -135,7 +138,7 @@ sudo dmesg -w
 sudo insmod corsair_wmi.ko
 ```
 
-Press the front-panel selector. The prototype should log decoded mode events.
+Press the front-panel selector. The driver should log decoded mode events.
 It also exposes read-only sysfs attributes on the method WMI device:
 
 ```text
@@ -147,13 +150,6 @@ Unload:
 
 ```sh
 sudo rmmod corsair_wmi
-```
-
-Useful module parameters:
-
-```text
-log_other_events=1  Log non-selector WMI events for investigation
-query_blocks=1      Query WMI data blocks; currently not needed for mode support
 ```
 
 ## Rust Core
@@ -173,9 +169,8 @@ It is deliberately small and `no_std`-friendly:
 - `is_selector_event()`
 - `decode_selector_event()`
 
-The C kernel shim currently mirrors this tiny decode logic because the Linux WMI
-boundary is still C. The intent is to keep the hardware contract tested in Rust
-while the WMI/sysfs integration remains in the kernel-facing shim.
+The kernel driver has a local copy of the same tiny decode contract because
+out-of-tree kernel Rust modules are built by Kbuild rather than Cargo.
 
 ## Rust Kernel Probe
 
@@ -293,8 +288,8 @@ attributes.
 Build the Rust driver with:
 
 ```sh
-./scripts/build_rust_wmi.sh
-./scripts/sign_for_secure_boot.sh rust/corsair_wmi_kernel/corsair_wmi_rust.ko
+./scripts/build.sh
+./scripts/sign_for_secure_boot.sh
 ```
 
 ## Licensing Notes

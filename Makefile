@@ -1,10 +1,12 @@
 KDIR ?= /lib/modules/$(shell uname -r)/build
+RUST_MODULE_DIR := rust/corsair_wmi_kernel
 
-obj-m += corsair_wmi.o
-corsair_wmi-y := src/corsair_wmi.o
-
+# Top-level convenience wrapper. The nested Makefile is the Kbuild file for the
+# external Rust module; this wrapper routes builds through the script so the
+# distro rustc/RUST_LIB_SRC setup is consistent.
 all:
-	$(MAKE) -C $(KDIR) M=$(CURDIR) modules
+	KDIR=$(KDIR) ./scripts/build.sh
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
+	$(MAKE) -C $(RUST_MODULE_DIR) KDIR=$(KDIR) clean
+	rm -f $(CURDIR)/corsair_wmi.ko
