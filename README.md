@@ -25,10 +25,62 @@ $ sudo dmesg -w
 [33572.603001] corsair_wmi: mode=balanced raw=0 source=event
 ```
 
+## Optional UI
+
+The optional GNOME indicator shows the current performance mode in the Ubuntu
+top-right panel area. It reads:
+
+```text
+/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode
+```
+
+and waits for the driver's `sysfs_notify()` updates instead of polling on a
+timer. The click menu shows:
+
+```text
+Corsair Performance
+Mode: Balanced
+Start automatically ✓
+--------------
+Quit
+```
+
+The symbolic panel icons are intentionally simple and match the iconography on the PC case:
+
+```text
+quiet    = one circle
+balanced = two circles
+max      = three circles
+super    = four circles
+unknown  = question mark
+```
+
+If the kernel driver is not loaded or the sysfs file is missing, the indicator
+starts in `Unknown` mode and the menu reports that the kernel driver may be
+missing.
+
+To build the UI inside the dev container:
+
+```sh
+./scripts/install-ui.sh --build-only
+```
+
+Then run the compiled binary directly from the host, without installing Rust or
+Cargo on the host:
+
+```sh
+CORSAIR_MODE_ICON_THEME_PATH="$PWD/icons" ./target/release/corsair-mode-indicator
+```
+
+`CORSAIR_MODE_ICON_THEME_PATH` lets the uninstalled app find the icons from the
+repository checkout. Installed copies use the user's icon theme path instead.
+When installed, the menu's `Start automatically` item toggles GNOME login
+startup by updating the autostart desktop entry.
+
 ## Installing
 
 To install the driver for the currently running kernel and load it on future
-boots:
+boots, run this on the host:
 
 ```sh
 ./scripts/install.sh
@@ -61,6 +113,46 @@ this on the host after `corsair_wmi.ko` exists:
 
 That skips build and signing and only installs the existing module.
 
+To install the optional GNOME UI, build the release binary inside the dev
+container and install the user-session assets from the host:
+
+```sh
+# In container:
+./scripts/install-ui.sh --build-only
+
+# On host:
+./scripts/install-ui.sh --no-build
+```
+
+The UI installer copies the already-built binary to:
+
+```text
+~/.local/bin/corsair-mode-indicator
+```
+
+It also installs a GNOME application launcher entry:
+
+```text
+~/.local/share/applications/corsair-mode-indicator.desktop
+```
+
+and symbolic icons under:
+
+```text
+~/.local/share/icons/hicolor/scalable/status/
+```
+
+GNOME session autostart is controlled by:
+
+```text
+~/.config/autostart/corsair-mode-indicator.desktop
+```
+
+The installer enables autostart by default on first install. If that file
+already exists with `X-GNOME-Autostart-enabled=false`, reinstalling preserves
+that disabled preference. The running app's `Start automatically` menu item
+updates the same setting.
+
 If Secure Boot is enabled and the signing certificate is not enrolled yet, run
 the MOK import flow from "Running The Driver", reboot, then run the installer
 again. The installer persists across reboots for the currently running kernel;
@@ -70,6 +162,12 @@ To remove the installed module and boot autoload config:
 
 ```sh
 ./scripts/uninstall.sh
+```
+
+To remove the optional GNOME UI:
+
+```sh
+./scripts/uninstall-ui.sh
 ```
 
 For a fuller host validation pass, see
@@ -137,12 +235,15 @@ so the driver uses a small local FFI module for `struct wmi_driver`,
 rust/corsair_wmi_kernel/         Rust WMI/sysfs kernel driver
 rust/corsair_performance_mode_core/
                                   Rust no_std-friendly decode crate
-Cargo.toml                        Rust crate manifest
+rust/corsair_mode_indicator/      Optional GNOME StatusNotifier indicator
+Cargo.toml                        Rust workspace manifest
 Makefile                         Convenience wrapper for the Rust module build
 rust/corsair_wmi_kernel/Makefile Kbuild file for the out-of-tree Rust module
 scripts/build.sh                 Builds the Rust kernel module
 scripts/install.sh               Installs and enables the module for boot
 scripts/uninstall.sh             Removes the installed module and boot config
+scripts/install-ui.sh            Builds and/or installs the optional UI
+scripts/uninstall-ui.sh          Removes the optional UI
 scripts/sign_for_secure_boot.sh  Low-level helper for local MOK signing
 scripts/check_kernel_rust.sh      Checks/builds against the kernel Rust toolchain
 LICENSE                          Repository license

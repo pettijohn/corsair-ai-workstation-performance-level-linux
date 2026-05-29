@@ -44,6 +44,27 @@ impl Mode {
             Self::Unknown => "unknown",
         }
     }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Quiet => "Quiet",
+            Self::Balanced => "Balanced",
+            Self::Max => "Max",
+            Self::Super => "Super",
+            Self::Unknown => "Unknown",
+        }
+    }
+
+    pub fn from_sysfs_value(value: &str) -> Self {
+        match value.trim() {
+            "quiet" => Self::Quiet,
+            "balanced" => Self::Balanced,
+            "max" => Self::Max,
+            "super" => Self::Super,
+            "unknown" => Self::Unknown,
+            _ => Self::Unknown,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -92,11 +113,27 @@ mod tests {
         assert_eq!(Mode::Super.as_str(), "super");
         assert_eq!(Mode::Unknown.as_str(), "unknown");
 
+        assert_eq!(Mode::Quiet.label(), "Quiet");
+        assert_eq!(Mode::Balanced.label(), "Balanced");
+        assert_eq!(Mode::Max.label(), "Max");
+        assert_eq!(Mode::Super.label(), "Super");
+        assert_eq!(Mode::Unknown.label(), "Unknown");
+
         assert_eq!(Mode::Balanced.raw_value(), 0);
         assert_eq!(Mode::Max.raw_value(), 1);
         assert_eq!(Mode::Quiet.raw_value(), 2);
         assert_eq!(Mode::Super.raw_value(), 3);
         assert_eq!(Mode::Unknown.raw_value(), 255);
+    }
+
+    #[test]
+    fn parses_sysfs_values() {
+        assert_eq!(Mode::from_sysfs_value("quiet\n"), Mode::Quiet);
+        assert_eq!(Mode::from_sysfs_value("balanced\n"), Mode::Balanced);
+        assert_eq!(Mode::from_sysfs_value("max\n"), Mode::Max);
+        assert_eq!(Mode::from_sysfs_value("super\n"), Mode::Super);
+        assert_eq!(Mode::from_sysfs_value("unknown\n"), Mode::Unknown);
+        assert_eq!(Mode::from_sysfs_value("turbo\n"), Mode::Unknown);
     }
 
     #[test]

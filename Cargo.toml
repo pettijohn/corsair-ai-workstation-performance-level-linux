@@ -1,12 +1,9 @@
-[package]
-name = "corsair-performance-mode-core"
-version = "0.1.0"
-edition = "2021"
-license = "GPL-2.0-only"
-description = "Core mode decoding logic for the CORSAIR AI Workstation performance selector"
-
-[lib]
-path = "rust/corsair_performance_mode_core/src/lib.rs"
+[workspace]
+members = [
+    "rust/corsair_performance_mode_core",
+    "rust/corsair_mode_indicator",
+]
+resolver = "2"
 
 [profile.release]
 panic = "abort"
