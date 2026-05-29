@@ -473,12 +473,3 @@ the final implementation:
 
 The WMI method/event path is the working approach.
 
-## Known Open Questions
-
-- Confirm the level mapping against firmware setup UI on additional systems.
-- Decide whether `Super` should be exposed as `super`, `max_plus`, or hidden as
-  an unsupported value if the product documentation only names three levels.
-- Decide whether the sysfs node should live on the method WMI device, the event
-  WMI device, or a small platform device created by the driver.
-- Decide final upstream strategy: current-kernel install script, DKMS package,
-  or eventual kernel submission.
