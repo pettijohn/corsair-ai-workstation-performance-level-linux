@@ -44,7 +44,7 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
 
    On valid selector events, update cached state and call `sysfs_notify()`.
 
-4. **Then attempt Rust-in-kernel integration** `[toolchain smoke test complete; Rust driver port next]`
+4. **Then attempt Rust-in-kernel integration** `[toolchain check complete; Rust driver port complete]`
 
    Ultimate goal: replace the C shim with a complete Rust kernel driver. No C
    should remain in the final driver path.
@@ -53,8 +53,8 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
 
    - `CONFIG_RUST=y` and `CONFIG_RUST_IS_AVAILABLE=y` are present.
    - `RUST_LIB_SRC=/opt/rustc-1.93.1/library make -C /lib/modules/$(uname -r)/build rustavailable` passes after the dev container rebuild.
-   - A minimal Rust kernel module smoke test exists in `rust_kernel_probe/`.
-   - The smoke module requires the host package `linux-lib-rust-$(uname -r)`, which exposes:
+   - The driver build requires the host package `linux-lib-rust-$(uname -r)`,
+     which exposes:
 
      ```text
      /lib/modules/$(uname -r)/build/rust/libcore.rmeta
@@ -62,7 +62,8 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
      /lib/modules/$(uname -r)/build/rust/libpin_init.rmeta
      ```
 
-   - With Ubuntu's packaged `rustc 1.93.1` and the matching `linux-lib-rust` package, `./scripts/check_kernel_rust.sh` builds `rust_kernel_probe/corsair_wmi_rust_probe.ko`.
+   - With Ubuntu's packaged `rustc 1.93.1` and the matching `linux-lib-rust`
+     package, `./scripts/check_kernel_rust.sh` builds `corsair_wmi.ko`.
 
    Host dependency:
 
@@ -180,16 +181,23 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
 
       Deliverable: no C source is required to build/load the driver.
 
-   4.8. **Hardening and packaging**
+   4.8. **Hardening and packaging** `[complete]`
 
       After the all-Rust module works:
 
-      - add a host test checklist for current mode, selector events, sysfs, and
-        unload/reload
-      - decide whether to keep the Rust smoke module or fold it into CI/docs
-      - add DKMS or another repeatable install path
-      - document Secure Boot signing with the `corsair_wmi` artifact name
-      - consider whether `super` should remain public or be treated as unknown
+      - added `docs/host-test-checklist.md` for current mode, selector events,
+        sysfs, install, reboot, and uninstall checks
+      - removed the old Rust smoke module and kept `check_kernel_rust.sh` as a
+        real-driver toolchain diagnostic
+      - added `scripts/install.sh` as the repeatable current-kernel install path
+        and `scripts/uninstall.sh` for cleanup
+      - documented Secure Boot signing with the `corsair_wmi` artifact name
+      - kept `super` public for now because both query and event mappings expose
+        it; revisit naming after more systems are tested
+
+      Deliverable: `./scripts/install.sh` installs `corsair_wmi.ko` into the
+      running kernel's module tree, runs `depmod`, enables boot autoload through
+      `/etc/modules-load.d/corsair_wmi.conf`, and loads the module immediately.
 
 5. **Devcontainer additions**
 

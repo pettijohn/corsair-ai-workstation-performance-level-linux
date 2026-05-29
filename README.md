@@ -3,14 +3,65 @@
 This repository is a Linux driver that exposes the CORSAIR
 AI Workstation front-panel Performance Mode Selector state.
 
+Tested on Ubuntu 26.04 with 7.0.0-15 kernel.
+
 ![Button on Corsair AI Workstation](Overview.png)
 
-The driver has read-only support:
+The driver has read-only support to report the current performance mode:
 
-- report the current mode at driver probe time
-- report mode changes when the front-panel selector is pressed
-- expose the current mode to userspace through sysfs `cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode`
-- does not change firmware state from Linux
+```
+$ cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode
+balanced
+```
+
+```
+# Press the button while watching kernel messages
+$ sudo dmesg -w 
+[33373.991128] corsair_wmi: selector event detail=0x13 mode_raw=1
+[33373.991141] corsair_wmi: mode=max raw=1 source=event
+[33569.459848] corsair_wmi: selector event detail=0x11 mode_raw=2
+[33569.459858] corsair_wmi: mode=quiet raw=2 source=event
+[33572.602987] corsair_wmi: selector event detail=0x12 mode_raw=0
+[33572.603001] corsair_wmi: mode=balanced raw=0 source=event
+```
+
+## Installing
+
+To install the driver for the currently running kernel and load it on future
+boots:
+
+```sh
+./scripts/install.sh
+```
+
+The script builds `corsair_wmi.ko`, signs it with the local MOK key, installs it
+to:
+
+```text
+/lib/modules/$(uname -r)/extra/corsair_wmi.ko
+```
+
+It then runs `depmod`, writes:
+
+```text
+/etc/modules-load.d/corsair_wmi.conf
+```
+
+and loads the module immediately with `modprobe`.
+
+If Secure Boot is enabled and the signing certificate is not enrolled yet, run
+the MOK import flow from "Running The Driver", reboot, then run the installer
+again. The installer persists across reboots for the currently running kernel;
+run it again after a kernel upgrade until DKMS packaging exists.
+
+To remove the installed module and boot autoload config:
+
+```sh
+./scripts/uninstall.sh
+```
+
+For a fuller host validation pass, see
+`docs/host-test-checklist.md`.
 
 ## Current Status
 
@@ -58,11 +109,15 @@ driver unless additional behavior is intentionally added for it.
 ## Supported Target
 
 This project intentionally targets Ubuntu 26.04 with Linux 7.0+ kernels. Older
-distributions and older kernel toolchains are out of scope for now.
+distributions and older kernel toolchains are out of scope.
 
 The dev container is also based on Ubuntu 26.04 so its compiler, glibc, and
 kernel tooling match the supported host family closely enough for out-of-tree
 module builds.
+
+Ubuntu's Rust kernel package does not expose a safe WMI driver abstraction yet,
+so the driver uses a small local FFI module for `struct wmi_driver`,
+`wmidev_evaluate_method()`, WMI notifications, and sysfs attributes.
 
 ## Repository Contents
 
@@ -70,13 +125,14 @@ module builds.
 rust/corsair_wmi_kernel/         Rust WMI/sysfs kernel driver
 rust/corsair_performance_mode_core/
                                   Rust no_std-friendly decode crate
-rust_kernel_probe/               Minimal Rust kernel module smoke test
 Cargo.toml                        Rust crate manifest
 Makefile                         Convenience wrapper for the Rust module build
 rust/corsair_wmi_kernel/Makefile Kbuild file for the out-of-tree Rust module
 scripts/build.sh                 Builds the Rust kernel module
+scripts/install.sh               Installs and enables the module for boot
+scripts/uninstall.sh             Removes the installed module and boot config
 scripts/sign_for_secure_boot.sh  Generates a local MOK cert and signs the module
-scripts/check_kernel_rust.sh      Checks/builds the Rust kernel smoke module
+scripts/check_kernel_rust.sh      Checks/builds against the kernel Rust toolchain
 LICENSE                          Repository license
 ```
 
@@ -172,11 +228,11 @@ It is deliberately small and `no_std`-friendly:
 The kernel driver has a local copy of the same tiny decode contract because
 out-of-tree kernel Rust modules are built by Kbuild rather than Cargo.
 
-## Rust Kernel Probe
+## Kernel Rust Toolchain
 
 The target kernel has Rust enabled, and out-of-tree Rust module builds need the
 matching Ubuntu Rust compiler plus prebuilt Rust kernel libraries. Check the
-host/container setup and build the smoke module with:
+host/container setup and build the driver module with:
 
 ```sh
 ./scripts/check_kernel_rust.sh
@@ -191,12 +247,12 @@ sudo apt install linux-lib-rust-$(uname -r)
 
 Then rebuild/reopen the dev container so the `/usr/src` bind mount exposes that
 package. The dev container uses Ubuntu's packaged `rustc` rather than rustup so
-the compiler matches those kernel libraries. Once present, the script builds the
-minimal smoke module in `rust_kernel_probe/`.
+the compiler matches those kernel libraries. Once present, the script builds
+`corsair_wmi.ko`.
 
-## Clean-Room Driver Implementation Guide
+## Driver Implementation Guide
 
-A production driver should bind to the two WMI GUIDs:
+A production driver must bind to the two WMI GUIDs:
 
 ```text
 8FAFC061-22DA-46E2-91DB-1FE3D7E5FF3C   event source, notify id 0xBC
@@ -276,33 +332,6 @@ the final implementation:
 
 The WMI method/event path is the working approach.
 
-## Rust Driver Notes
-
-The supported target is Ubuntu 26.04 with Linux 7.0+ kernels, so the project
-leans on the modern Rust kernel toolchain instead of carrying compatibility for
-older distributions. Ubuntu's Rust kernel package does not expose a safe WMI
-driver abstraction yet, so the Rust driver uses a small local FFI module for
-`struct wmi_driver`, `wmidev_evaluate_method()`, WMI notifications, and sysfs
-attributes.
-
-Build the Rust driver with:
-
-```sh
-./scripts/build.sh
-./scripts/sign_for_secure_boot.sh
-```
-
-## Licensing Notes
-
-The repository is GPL-2.0-only. The WMI functions used by the driver are
-exported by the kernel as GPL-only symbols, so the loadable kernel module also
-declares a GPL-compatible module license string:
-
-```text
-SPDX-License-Identifier: GPL-2.0
-MODULE_LICENSE("GPL")
-```
-
 ## Known Open Questions
 
 - Confirm the mode mapping against firmware setup UI on additional systems.
@@ -310,5 +339,5 @@ MODULE_LICENSE("GPL")
   an unsupported value if the product documentation only names three modes.
 - Decide whether the sysfs node should live on the method WMI device, the event
   WMI device, or a small platform device created by the driver.
-- Decide final upstream strategy: out-of-tree module, DKMS package, or eventual
-  kernel submission.
+- Decide final upstream strategy: current-kernel install script, DKMS package,
+  or eventual kernel submission.

@@ -24,8 +24,9 @@ out-of-tree Rust module:
   - `bindings::device_driver`
   - `bindings::wmi_device_id`
 
-The existing `rust_kernel_probe/` module proves that this toolchain can compile
-and link a minimal Rust kernel module against the host kernel headers.
+The real driver build now serves as the toolchain proof: `scripts/check_kernel_rust.sh`
+checks `rustavailable`, verifies the prebuilt Rust kernel libraries, and builds
+`corsair_wmi.ko` against the host kernel headers.
 
 ## What Is Missing for This Driver
 

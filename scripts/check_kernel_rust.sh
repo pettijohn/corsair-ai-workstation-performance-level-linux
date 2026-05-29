@@ -51,6 +51,7 @@ EOF
   exit 1
 fi
 
-echo "Building Rust kernel smoke module..."
-RUST_LIB_SRC="$rust_src" make -C "$repo_dir/rust_kernel_probe"
-echo "Built: $repo_dir/rust_kernel_probe/corsair_wmi_rust_probe.ko"
+echo "Building corsair_wmi driver module..."
+RUST_LIB_SRC="$rust_src" make -C "$repo_dir/rust/corsair_wmi_kernel"
+cp "$repo_dir/rust/corsair_wmi_kernel/corsair_wmi.ko" "$repo_dir/corsair_wmi.ko"
+echo "Built: $repo_dir/corsair_wmi.ko"

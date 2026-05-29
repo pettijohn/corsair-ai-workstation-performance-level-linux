@@ -108,7 +108,7 @@ impl kernel::Module for CorsairWmi {
             ))?;
         }
 
-        pr_info!("corsair_wmi: registered Rust WMI driver\n");
+        pr_info!("registered Rust WMI driver\n");
         Ok(Self)
     }
 }
@@ -121,7 +121,7 @@ impl Drop for CorsairWmi {
             wmi_ffi::wmi_driver_unregister(driver_ptr);
         }
 
-        pr_info!("corsair_wmi: unregistered Rust WMI driver\n");
+        pr_info!("unregistered Rust WMI driver\n");
     }
 }
 
@@ -129,7 +129,7 @@ unsafe extern "C" fn corsair_wmi_probe(
     wdev: *mut wmi_ffi::WmiDevice,
     context: *const c_void,
 ) -> c_int {
-    pr_info!("corsair_wmi: probe callback\n");
+    pr_info!("probe callback\n");
 
     if context == wmi_ffi::METHOD_CONTEXT {
         // Only the method device receives sysfs files and the initial read-only
@@ -143,7 +143,7 @@ unsafe extern "C" fn corsair_wmi_probe(
         }
 
         if let Err(ret) = unsafe { query_current_mode(wdev) } {
-            pr_info!("corsair_wmi: initial mode query failed ret={}\n", ret);
+            pr_info!("initial mode query failed ret={}\n", ret);
         }
     }
 
@@ -159,7 +159,7 @@ unsafe extern "C" fn corsair_wmi_remove(wdev: *mut wmi_ffi::WmiDevice) {
         METHOD_WDEV.store(ptr::null_mut(), Ordering::Release);
     }
 
-    pr_info!("corsair_wmi: remove callback\n");
+    pr_info!("remove callback\n");
 }
 
 unsafe extern "C" fn corsair_wmi_notify_new(
@@ -181,7 +181,7 @@ unsafe extern "C" fn corsair_wmi_notify_new(
     let mode = mode::Mode::from_event_detail(detail);
 
     pr_info!(
-        "corsair_wmi: selector event detail=0x{:02x} mode_raw={}\n",
+        "selector event detail=0x{:02x} mode_raw={}\n",
         detail,
         mode.raw_value()
     );
@@ -276,14 +276,14 @@ fn set_cached_mode(mode: mode::Mode, source: &'static str) {
 
     if old == mode.raw_value() {
         pr_info!(
-            "corsair_wmi: mode={} raw={} source={} unchanged\n",
+            "mode={} raw={} source={} unchanged\n",
             mode.as_str(),
             mode.raw_value(),
             source
         );
     } else {
         pr_info!(
-            "corsair_wmi: mode={} raw={} source={}\n",
+            "mode={} raw={} source={}\n",
             mode.as_str(),
             mode.raw_value(),
             source
