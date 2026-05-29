@@ -131,7 +131,7 @@ rust/corsair_wmi_kernel/Makefile Kbuild file for the out-of-tree Rust module
 scripts/build.sh                 Builds the Rust kernel module
 scripts/install.sh               Installs and enables the module for boot
 scripts/uninstall.sh             Removes the installed module and boot config
-scripts/sign_for_secure_boot.sh  Generates a local MOK cert and signs the module
+scripts/sign_for_secure_boot.sh  Low-level helper for local MOK signing
 scripts/check_kernel_rust.sh      Checks/builds against the kernel Rust toolchain
 LICENSE                          Repository license
 ```
@@ -170,21 +170,32 @@ Build:
 ./scripts/build.sh
 ```
 
+This produces `corsair_wmi.ko` without a module signature. On Secure Boot
+systems, build and sign in one step instead:
+
+```sh
+./scripts/build.sh --sign
+```
+
 Loading a kernel module changes the host kernel, so the `insmod`, `rmmod`, and
 `dmesg` commands below must run on the host or in a container started with the
 needed kernel-module privileges. A normal VS Code dev container can build and
 sign the module, but may not be allowed to load it.
 
-If Secure Boot is enabled, sign and enroll a local Machine Owner Key:
+If Secure Boot is enabled and the signing certificate is not enrolled yet,
+import the generated local Machine Owner Key after signing:
 
 ```sh
-./scripts/sign_for_secure_boot.sh
 sudo mokutil --import mok/corsair_wmi.der
 ```
 
 If this repository already has an older ignored `mok/corsair_wmi_probe.der`
-certificate from early local testing, the signing script will reuse it so an
-already-enrolled MOK continues to work.
+certificate from early local testing, the signing helper used by
+`build.sh --sign` will reuse it so an already-enrolled MOK continues to work.
+
+Every rebuild replaces `corsair_wmi.ko`. If you use `sudo insmod
+./corsair_wmi.ko` on a Secure Boot host, run `./scripts/build.sh --sign` after
+code changes; otherwise the kernel will reject the unsigned module.
 
 Reboot and enroll the key in the blue MOK manager screen if needed. To watch
 the probe logs and then load:

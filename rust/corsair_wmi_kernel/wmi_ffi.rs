@@ -91,11 +91,7 @@ unsafe extern "C" {
         device: *mut bindings::device,
         entry: *const bindings::device_attribute,
     );
-    pub(crate) fn sysfs_notify(
-        kobj: *mut bindings::kobject,
-        dir: *const u8,
-        attr: *const u8,
-    );
+    pub(crate) fn sysfs_notify(kobj: *mut bindings::kobject, dir: *const u8, attr: *const u8);
     pub(crate) fn sysfs_emit(buf: *mut u8, fmt: *const u8, ...) -> c_int;
 
     // Releases buffers allocated by ACPICA for ACPI_ALLOCATE_BUFFER calls.

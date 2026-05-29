@@ -25,6 +25,7 @@ target
 *.o
 *.mod
 *.mod.c
+rust/corsair_wmi_kernel/wmi_abi_check.c
 *.symvers
 *.order
 *.cmd

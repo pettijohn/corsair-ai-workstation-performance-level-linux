@@ -4,6 +4,35 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 kdir="${KDIR:-/lib/modules/$(uname -r)/build}"
 module_dir="$repo_dir/rust/corsair_wmi_kernel"
+sign_module=0
+
+usage() {
+  cat <<EOF
+Usage: $0 [--sign]
+
+Build corsair_wmi.ko.
+
+Options:
+  --sign   Sign the built module with scripts/sign_for_secure_boot.sh
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --sign)
+      sign_module=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
 
 # Kernel Rust artifacts are compiler-version sensitive. Prefer the distro
 # compiler that matches linux-lib-rust over a rustup toolchain in the shell.
@@ -30,4 +59,7 @@ fi
 
 RUST_LIB_SRC="$rust_src" make -C "$module_dir"
 cp "$module_dir/corsair_wmi.ko" "$repo_dir/corsair_wmi.ko"
+if [ "$sign_module" -eq 1 ]; then
+  "$repo_dir/scripts/sign_for_secure_boot.sh" "$repo_dir/corsair_wmi.ko"
+fi
 echo "Built: $repo_dir/corsair_wmi.ko"

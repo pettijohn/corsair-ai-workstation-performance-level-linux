@@ -51,10 +51,10 @@ fi
 
 sudo -v
 
-"$repo_dir/scripts/build.sh"
-
 if [ "$sign_module" -eq 1 ]; then
-  "$repo_dir/scripts/sign_for_secure_boot.sh" "$module"
+  "$repo_dir/scripts/build.sh" --sign
+else
+  "$repo_dir/scripts/build.sh"
 fi
 
 sudo install -D -m 0644 "$module" "$install_path"

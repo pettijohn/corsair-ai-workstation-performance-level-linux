@@ -8,8 +8,7 @@
 use core::ffi::{c_int, c_void};
 use core::mem::MaybeUninit;
 use core::ptr;
-use core::slice;
-use core::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicU8, Ordering};
 
 use kernel::error::to_result;
 use kernel::prelude::*;
@@ -54,7 +53,10 @@ static mut WMI_DRIVER: MaybeUninit<wmi_ffi::WmiDriver> = MaybeUninit::uninit();
 
 // The method WMI device owns the sysfs files. Selector events arrive on the
 // event WMI device but notify userspace through this cached method-device kobj.
-static METHOD_WDEV: AtomicPtr<wmi_ffi::WmiDevice> = AtomicPtr::new(ptr::null_mut());
+// METHOD_DEV is protected by METHOD_DEV_LOCK and holds a get_device() reference
+// while non-null.
+static mut METHOD_DEV_LOCK: MaybeUninit<kernel::bindings::mutex> = MaybeUninit::uninit();
+static mut METHOD_DEV: *mut kernel::bindings::device = ptr::null_mut();
 static CURRENT_MODE: AtomicU8 = AtomicU8::new(mode::Mode::Unknown as u8);
 
 static CURRENT_MODE_ATTR: DeviceAttr = DeviceAttr(wmi_ffi::read_only_attr(
@@ -79,6 +81,10 @@ struct CorsairWmi;
 
 impl kernel::Module for CorsairWmi {
     fn init(_module: &'static ThisModule) -> Result<Self> {
+        unsafe {
+            kernel::bindings::mutex_init_generic(core::ptr::addr_of_mut!(METHOD_DEV_LOCK).cast());
+        }
+
         // The Linux WMI subsystem still needs raw C registration. The embedded
         // `device_driver` is intentionally zeroed except for its name because
         // the WMI core owns bus binding and callback dispatch from here.
@@ -131,18 +137,19 @@ unsafe extern "C" fn corsair_wmi_probe(
 ) -> c_int {
     pr_info!("probe callback\n");
 
+    if wdev.is_null() {
+        return -(kernel::bindings::ENODEV as c_int);
+    }
+
     if context == wmi_ffi::METHOD_CONTEXT {
         // Only the method device receives sysfs files and the initial read-only
         // AA method query. The event device binds solely for notify_new().
-        METHOD_WDEV.store(wdev, Ordering::Release);
-
-        let ret = unsafe { create_mode_attrs(wdev) };
+        let ret = attach_method_device(wdev);
         if ret != 0 {
-            METHOD_WDEV.store(ptr::null_mut(), Ordering::Release);
             return ret;
         }
 
-        if let Err(ret) = unsafe { query_current_mode(wdev) } {
+        if let Err(ret) = query_current_mode(wdev) {
             pr_info!("initial mode query failed ret={}\n", ret);
         }
     }
@@ -151,13 +158,11 @@ unsafe extern "C" fn corsair_wmi_probe(
 }
 
 unsafe extern "C" fn corsair_wmi_remove(wdev: *mut wmi_ffi::WmiDevice) {
-    if METHOD_WDEV.load(Ordering::Acquire) == wdev {
-        // Remove sysfs before clearing the pointer used by event notifications.
-        unsafe {
-            remove_mode_attrs(wdev);
-        }
-        METHOD_WDEV.store(ptr::null_mut(), Ordering::Release);
+    if wdev.is_null() {
+        return;
     }
+
+    detach_method_device(wdev);
 
     pr_info!("remove callback\n");
 }
@@ -166,14 +171,11 @@ unsafe extern "C" fn corsair_wmi_notify_new(
     _wdev: *mut wmi_ffi::WmiDevice,
     data: *const wmi_ffi::WmiBuffer,
 ) {
-    if data.is_null() || unsafe { (*data).data.is_null() } {
+    let Some(payload) = selector_event_payload(data) else {
         return;
-    }
+    };
 
-    // The WMI core owns the event buffer for the callback duration. We borrow it
-    // just long enough to filter the selector payload and decode byte 1.
-    let payload = unsafe { slice::from_raw_parts((*data).data.cast::<u8>(), (*data).length) };
-    if !mode::is_selector_event(payload) {
+    if !mode::is_selector_event(&payload) {
         return;
     }
 
@@ -188,13 +190,70 @@ unsafe extern "C" fn corsair_wmi_notify_new(
     set_cached_mode(mode, "event");
 }
 
-unsafe fn create_mode_attrs(wdev: *mut wmi_ffi::WmiDevice) -> c_int {
-    let dev = unsafe { core::ptr::addr_of_mut!((*wdev).dev) };
+fn attach_method_device(wdev: *mut wmi_ffi::WmiDevice) -> c_int {
+    let dev = match wmi_device_dev(wdev) {
+        Ok(dev) => dev,
+        Err(ret) => return ret,
+    };
+
+    let _guard = MethodDevGuard::lock();
+    if unsafe { !METHOD_DEV.is_null() } {
+        pr_info!("method device already bound; rejecting duplicate\n");
+        return -(kernel::bindings::EBUSY as c_int);
+    }
+
+    let ret = create_mode_attrs(dev);
+    if ret != 0 {
+        return ret;
+    }
+
+    let referenced_dev = unsafe { kernel::bindings::get_device(dev) };
+    if referenced_dev.is_null() {
+        remove_mode_attrs(dev);
+        return -(kernel::bindings::ENODEV as c_int);
+    }
+
+    unsafe {
+        METHOD_DEV = referenced_dev;
+    }
+
+    0
+}
+
+fn detach_method_device(wdev: *mut wmi_ffi::WmiDevice) {
+    let Ok(dev) = wmi_device_dev(wdev) else {
+        return;
+    };
+
+    let mut owned_dev = ptr::null_mut();
+    {
+        let _guard = MethodDevGuard::lock();
+        if unsafe { METHOD_DEV == dev } {
+            unsafe {
+                owned_dev = METHOD_DEV;
+                METHOD_DEV = ptr::null_mut();
+            }
+        }
+    }
+
+    if !owned_dev.is_null() {
+        // METHOD_DEV is already cleared, so new notifications will not race the
+        // sysfs teardown below.
+        remove_mode_attrs(dev);
+        unsafe {
+            kernel::bindings::put_device(owned_dev);
+        }
+    }
+}
+
+fn create_mode_attrs(dev: *mut kernel::bindings::device) -> c_int {
+    if dev.is_null() {
+        return -(kernel::bindings::ENODEV as c_int);
+    }
 
     // Attach files directly to the method WMI device, matching the public ABI
     // documented in README.md.
-    let ret =
-        unsafe { wmi_ffi::device_create_file(dev, core::ptr::addr_of!(CURRENT_MODE_ATTR.0)) };
+    let ret = unsafe { wmi_ffi::device_create_file(dev, core::ptr::addr_of!(CURRENT_MODE_ATTR.0)) };
     if ret != 0 {
         return ret;
     }
@@ -210,8 +269,10 @@ unsafe fn create_mode_attrs(wdev: *mut wmi_ffi::WmiDevice) -> c_int {
     ret
 }
 
-unsafe fn remove_mode_attrs(wdev: *mut wmi_ffi::WmiDevice) {
-    let dev = unsafe { core::ptr::addr_of_mut!((*wdev).dev) };
+fn remove_mode_attrs(dev: *mut kernel::bindings::device) {
+    if dev.is_null() {
+        return;
+    }
 
     unsafe {
         wmi_ffi::device_remove_file(dev, core::ptr::addr_of!(CURRENT_MODE_RAW_ATTR.0));
@@ -219,7 +280,18 @@ unsafe fn remove_mode_attrs(wdev: *mut wmi_ffi::WmiDevice) {
     }
 }
 
-unsafe fn query_current_mode(wdev: *mut wmi_ffi::WmiDevice) -> core::result::Result<(), c_int> {
+fn query_current_mode(wdev: *mut wmi_ffi::WmiDevice) -> core::result::Result<(), c_int> {
+    let mode = evaluate_current_mode_method(wdev)?;
+
+    set_cached_mode(mode, "query");
+    Ok(())
+}
+
+fn evaluate_current_mode_method(wdev: *mut wmi_ffi::WmiDevice) -> core::result::Result<mode::Mode, c_int> {
+    if wdev.is_null() {
+        return Err(-(kernel::bindings::ENODEV as c_int));
+    }
+
     // Method id 2 is the read-only current-mode query. Method id 1 is not used
     // by this driver because firmware treats it as a state-changing path.
     let input = kernel::bindings::acpi_buffer {
@@ -244,29 +316,19 @@ unsafe fn query_current_mode(wdev: *mut wmi_ffi::WmiDevice) -> core::result::Res
         return Err(-(kernel::bindings::EIO as c_int));
     }
 
-    let obj = output.pointer.cast::<kernel::bindings::acpi_object>();
+    let output = AcpiAllocatedBuffer::new(output.pointer);
+    let obj = output.as_object();
     if obj.is_null() {
         return Err(-(kernel::bindings::ENODATA as c_int));
     }
 
-    // ACPICA allocated `output.pointer`; every successful non-null return below
-    // must release it with kfree(), mirroring ACPI_FREE() in C drivers.
     let object_type = unsafe { (*obj).type_ };
     if object_type != kernel::bindings::ACPI_TYPE_INTEGER {
-        unsafe {
-            wmi_ffi::kfree(output.pointer);
-        }
         return Err(-(kernel::bindings::ENODATA as c_int));
     }
 
     let value = unsafe { (*obj).integer.value };
-    let mode = mode::Mode::from_query_value(value);
-    unsafe {
-        wmi_ffi::kfree(output.pointer);
-    }
-
-    set_cached_mode(mode, "query");
-    Ok(())
+    Ok(mode::Mode::from_query_value(value))
 }
 
 fn set_cached_mode(mode: mode::Mode, source: &'static str) {
@@ -296,17 +358,49 @@ fn set_cached_mode(mode: mode::Mode, source: &'static str) {
 }
 
 fn notify_mode_attrs() {
-    let wdev = METHOD_WDEV.load(Ordering::Acquire);
-    if wdev.is_null() {
+    let _guard = MethodDevGuard::lock();
+    let dev = unsafe { METHOD_DEV };
+    if dev.is_null() {
         return;
     }
 
     unsafe {
         // Wake pollers on both human-readable and numeric sysfs files.
-        let kobj = core::ptr::addr_of_mut!((*wdev).dev.kobj);
+        let kobj = core::ptr::addr_of_mut!((*dev).kobj);
         wmi_ffi::sysfs_notify(kobj, ptr::null(), CURRENT_MODE_ATTR_NAME.as_ptr());
         wmi_ffi::sysfs_notify(kobj, ptr::null(), CURRENT_MODE_RAW_ATTR_NAME.as_ptr());
     }
+}
+
+fn wmi_device_dev(
+    wdev: *mut wmi_ffi::WmiDevice,
+) -> core::result::Result<*mut kernel::bindings::device, c_int> {
+    if wdev.is_null() {
+        return Err(-(kernel::bindings::ENODEV as c_int));
+    }
+
+    Ok(unsafe { core::ptr::addr_of_mut!((*wdev).dev) })
+}
+
+fn selector_event_payload(data: *const wmi_ffi::WmiBuffer) -> Option<[u8; 3]> {
+    if data.is_null() {
+        return None;
+    }
+
+    let data = unsafe { &*data };
+    if data.data.is_null() || data.length < 3 {
+        return None;
+    }
+
+    // The driver only needs the first three event bytes. Avoid constructing a
+    // slice over the firmware-provided full length.
+    Some(unsafe {
+        [
+            ptr::read(data.data.cast::<u8>()),
+            ptr::read(data.data.cast::<u8>().add(1)),
+            ptr::read(data.data.cast::<u8>().add(2)),
+        ]
+    })
 }
 
 unsafe extern "C" fn current_mode_show(
@@ -314,6 +408,10 @@ unsafe extern "C" fn current_mode_show(
     _attr: *mut kernel::bindings::device_attribute,
     buf: *mut u8,
 ) -> isize {
+    if buf.is_null() {
+        return -(kernel::bindings::EINVAL as isize);
+    }
+
     let mode = mode::Mode::from_raw(CURRENT_MODE.load(Ordering::Acquire));
 
     // sysfs_emit() is the kernel helper that bounds writes to PAGE_SIZE.
@@ -325,7 +423,54 @@ unsafe extern "C" fn current_mode_raw_show(
     _attr: *mut kernel::bindings::device_attribute,
     buf: *mut u8,
 ) -> isize {
+    if buf.is_null() {
+        return -(kernel::bindings::EINVAL as isize);
+    }
+
     let mode = CURRENT_MODE.load(Ordering::Acquire);
 
     unsafe { wmi_ffi::sysfs_emit(buf, b"%u\n\0".as_ptr(), wmi_ffi::u32_arg(mode)) as isize }
+}
+
+struct MethodDevGuard;
+
+impl MethodDevGuard {
+    fn lock() -> Self {
+        unsafe {
+            kernel::bindings::mutex_lock(core::ptr::addr_of_mut!(METHOD_DEV_LOCK).cast());
+        }
+        Self
+    }
+}
+
+impl Drop for MethodDevGuard {
+    fn drop(&mut self) {
+        unsafe {
+            kernel::bindings::mutex_unlock(core::ptr::addr_of_mut!(METHOD_DEV_LOCK).cast());
+        }
+    }
+}
+
+struct AcpiAllocatedBuffer {
+    pointer: *mut c_void,
+}
+
+impl AcpiAllocatedBuffer {
+    fn new(pointer: *mut c_void) -> Self {
+        Self { pointer }
+    }
+
+    fn as_object(&self) -> *mut kernel::bindings::acpi_object {
+        self.pointer.cast()
+    }
+}
+
+impl Drop for AcpiAllocatedBuffer {
+    fn drop(&mut self) {
+        if !self.pointer.is_null() {
+            unsafe {
+                wmi_ffi::kfree(self.pointer);
+            }
+        }
+    }
 }
