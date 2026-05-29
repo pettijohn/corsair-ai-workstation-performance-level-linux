@@ -34,8 +34,8 @@ boots:
 ./scripts/install.sh
 ```
 
-The script builds `corsair_wmi.ko`, signs it with the local MOK key, installs it
-to:
+By default, the script builds `corsair_wmi.ko`, signs it with the local MOK key,
+installs it to:
 
 ```text
 /lib/modules/$(uname -r)/extra/corsair_wmi.ko
@@ -48,6 +48,18 @@ It then runs `depmod`, writes:
 ```
 
 and loads the module immediately with `modprobe`.
+
+If you build and sign inside the dev container but install from the host, run
+this on the host after `corsair_wmi.ko` exists:
+
+```sh
+# In container:
+./scripts/build.sh --sign
+# On host:
+./scripts/install.sh --no-build
+```
+
+That skips build and signing and only installs the existing module.
 
 If Secure Boot is enabled and the signing certificate is not enrolled yet, run
 the MOK import flow from "Running The Driver", reboot, then run the installer

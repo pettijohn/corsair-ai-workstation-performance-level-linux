@@ -57,6 +57,13 @@ cat /etc/modules-load.d/corsair_wmi.conf
 modinfo corsair_wmi
 ```
 
+If the module was already built and signed in the dev container, install only
+from the host:
+
+```sh
+./scripts/install.sh --no-build
+```
+
 Reboot, then verify:
 
 ```sh
