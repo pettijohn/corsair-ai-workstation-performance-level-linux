@@ -41,39 +41,23 @@ timer. The click menu shows:
 
 ![Screenshot of Performance Level UI](Screenshot.png)
 
-The symbolic panel icons are intentionally simple and match the iconography on the PC case:
+## Extremely Efficient
 
-```text
-quiet    = one circle
-balanced = two circles
-max      = three circles
-super    = four circles
-unknown  = question mark
+```
+$ lsmod | grep corsair
+corsair_wmi            16384  0
+
+$ ps -C corsair-level-indicator -o pid,ppid,nlwp,vsz,rss,comm
+    PID    PPID NLWP    VSZ   RSS COMMAND
+  25449    6918    5 343676  4872 corsair-level-i
 ```
 
-If the kernel driver is not loaded or the sysfs file is missing, the indicator
-starts in `Unknown` level and the menu reports that the kernel driver may be
-missing.
+The kernel module uses about 16KB RAM while the app uses about 4.8MB and 0% CPU (blocks waiting for kernel interrupt). Written in 100% Rust for memory efficiency, memory safety, and maximum native performance.
 
-To build the UI inside the dev container:
-
-```sh
-./scripts/install-ui.sh --build-only
-```
-
-Then run the compiled binary directly from the host, without installing Rust or
-Cargo on the host:
-
-```sh
-CORSAIR_LEVEL_ICON_THEME_PATH="$PWD/icons" ./target/release/corsair-level-indicator
-```
-
-`CORSAIR_LEVEL_ICON_THEME_PATH` lets the uninstalled app find the icons from the
-repository checkout. Installed copies use the user's icon theme path instead.
-When installed, the menu's `Start automatically` item toggles GNOME login
-startup by updating the autostart desktop entry.
 
 ## Installing
+
+### Kernel Module
 
 To install the driver for the currently running kernel and load it on future
 boots, run this on the host:
@@ -110,6 +94,13 @@ this on the host after `corsair_wmi.ko` exists:
 
 That skips build and signing and only installs the existing module.
 
+If Secure Boot is enabled and the signing certificate is not enrolled yet, run
+the MOK import flow from "Running The Driver", reboot, then run the installer
+again. The installer persists across reboots for the currently running kernel;
+run it again after a kernel upgrade until DKMS packaging exists.
+
+### Optional UI
+
 To install the optional GNOME UI, build the release binary inside the dev
 container and install the user-session assets from the host:
 
@@ -145,15 +136,44 @@ GNOME session autostart is controlled by:
 ~/.config/autostart/corsair-level-indicator.desktop
 ```
 
+To build the UI inside the dev container:
+
+```sh
+./scripts/install-ui.sh --build-only
+```
+
+Then run the compiled binary directly from the host, without installing Rust or
+Cargo on the host:
+
+```sh
+CORSAIR_LEVEL_ICON_THEME_PATH="$PWD/icons" ./target/release/corsair-level-indicator
+```
+
+`CORSAIR_LEVEL_ICON_THEME_PATH` lets the uninstalled app find the icons from the
+repository checkout. Installed copies use the user's icon theme path instead.
+When installed, the menu's `Start automatically` item toggles GNOME login
+startup by updating the autostart desktop entry.
+
+The icons are intentionally simple and match the iconography on the PC case:
+
+```text
+quiet    = one circle
+balanced = two circles
+max      = three circles
+super    = four circles
+unknown  = question mark
+```
+
+If the kernel driver is not loaded or the sysfs file is missing, the indicator
+starts in `Unknown` level and the menu reports that the kernel driver may be
+missing.
+
 The installer enables autostart by default on first install. If that file
 already exists with `X-GNOME-Autostart-enabled=false`, reinstalling preserves
 that disabled preference. The running app's `Start automatically` menu item
 updates the same setting.
 
-If Secure Boot is enabled and the signing certificate is not enrolled yet, run
-the MOK import flow from "Running The Driver", reboot, then run the installer
-again. The installer persists across reboots for the currently running kernel;
-run it again after a kernel upgrade until DKMS packaging exists.
+## Uninstall
 
 To remove the installed module and boot autoload config:
 
