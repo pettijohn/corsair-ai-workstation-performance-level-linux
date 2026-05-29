@@ -1,11 +1,11 @@
 [package]
-name = "corsair-mode-indicator"
+name = "corsair-level-indicator"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-2.0-only"
-description = "GNOME performance mode indicator for the CORSAIR AI Workstation"
+description = "GNOME performance level indicator for the CORSAIR AI Workstation"
 
 [dependencies]
-corsair-performance-mode-core = { path = "../corsair_performance_mode_core" }
+corsair-performance-level-core = { path = "../corsair_performance_level_core" }
 ksni = { version = "0.3.4", default-features = false, features = ["async-io", "blocking"] }
 nix = { version = "0.31.3", features = ["poll"] }

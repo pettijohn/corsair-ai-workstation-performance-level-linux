@@ -26,12 +26,12 @@ sudo insmod ./corsair_wmi.ko
 Expected:
 
 - `dmesg` shows the Rust WMI driver registering.
-- `current_mode` exists on the method WMI device.
-- `current_mode_raw` exists on the method WMI device.
+- `current_level` exists on the method WMI device.
+- `current_level_raw` exists on the method WMI device.
 
 ```sh
-cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode
-cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode_raw
+cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_level
+cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_level_raw
 ```
 
 ## Selector Event Test
@@ -45,7 +45,7 @@ sudo dmesg -w
 Expected:
 
 - Selector events log `detail=0x11`, `0x12`, `0x13`, or `0x14`.
-- `current_mode` changes to `quiet`, `balanced`, `max`, or `super`.
+- `current_level` changes to `quiet`, `balanced`, `max`, or `super`.
 - Unrelated events such as `01 0a 81 ...` are ignored.
 
 ## Persistent Install Test
@@ -68,7 +68,7 @@ Reboot, then verify:
 
 ```sh
 lsmod | grep '^corsair_wmi'
-cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode
+cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_level
 ```
 
 The install script persists across reboots for the currently running kernel. Run

@@ -1,4 +1,4 @@
-I reviewed `README.md`. The hardware contract is clear enough to plan from: two WMI GUIDs, read-only current-mode query via method id `2`, selector events filtered by `01 {11..14} 81`, and a proposed read-only sysfs surface.
+I reviewed `README.md`. The hardware contract is clear enough to plan from: two WMI GUIDs, read-only current-level query via method id `2`, selector events filtered by `01 {11..14} 81`, and a proposed read-only sysfs surface.
 
 **Rust Prototype Plan**
 
@@ -6,9 +6,9 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
 
    Build a small `no_std`-friendly Rust crate that owns the stable logic:
 
-   - `Mode::{Quiet, Balanced, Max, Super, Unknown}`
-   - `Mode::from_query_value(u8)`
-   - `Mode::from_event_payload(&[u8])`
+   - `Level::{Quiet, Balanced, Max, Super, Unknown}`
+   - `Level::from_query_value(u8)`
+   - `Level::from_event_payload(&[u8])`
    - selector-event filter logic
    - unit tests for known payloads, especially ignoring `01 0a 81 ...`
 
@@ -31,15 +31,15 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
    Implement:
 
    ```text
-   /sys/bus/wmi/devices/<method-guid>/current_mode
-   /sys/bus/wmi/devices/<method-guid>/current_mode_raw
+   /sys/bus/wmi/devices/<method-guid>/current_level
+   /sys/bus/wmi/devices/<method-guid>/current_level_raw
    ```
 
    Read-only attributes:
 
    ```text
-   current_mode: quiet | balanced | max | super | unknown
-   current_mode_raw: 0 | 1 | 2 | 3 | 255
+   current_level: quiet | balanced | max | super | unknown
+   current_level_raw: 0 | 1 | 2 | 3 | 255
    ```
 
    On valid selector events, update cached state and call `sysfs_notify()`.
@@ -138,11 +138,11 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
       - detect the method GUID
       - call `wmidev_evaluate_method(instance=0, method_id=2)`
       - decode an integer ACPI result through the Rust core mapping
-      - cache mode in Rust state
+      - cache level in Rust state
       - preserve the rule: never call method id `1`
 
       Deliverable: Rust module calls AA method id `2`, decodes the integer
-      result, caches it, and logs current mode on load.
+      result, caches it, and logs current level on load.
 
    4.5. **Port selector event handling** `[complete]`
 
@@ -150,24 +150,24 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
 
       - accept only `01 {11..14} 81` payloads
       - ignore unrelated OSD events by default
-      - update cached mode from the Rust core crate
+      - update cached level from the Rust core crate
 
       Deliverable: Rust module filters selector events and logs/cache-updates
-      mode changes on selector presses.
+      level changes on selector presses.
 
    4.6. **Port sysfs attributes** `[complete]`
 
       Expose the production ABI from Rust:
 
       ```text
-      /sys/bus/wmi/devices/<method-guid>/current_mode
-      /sys/bus/wmi/devices/<method-guid>/current_mode_raw
+      /sys/bus/wmi/devices/<method-guid>/current_level
+      /sys/bus/wmi/devices/<method-guid>/current_level_raw
       ```
 
-      Add `sysfs_notify()` equivalents on valid mode changes.
+      Add `sysfs_notify()` equivalents on valid level changes.
 
-      Deliverable: Rust module exposes the same read-only `current_mode` and
-      `current_mode_raw` attributes as the C driver. Host-side `cat` tests still
+      Deliverable: Rust module exposes the same read-only `current_level` and
+      `current_level_raw` attributes as the C driver. Host-side `cat` tests still
       need to be run on hardware.
 
    4.7. **Retire the C shim** `[complete]`
@@ -185,7 +185,7 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
 
       After the all-Rust module works:
 
-      - added `docs/host-test-checklist.md` for current mode, selector events,
+      - added `docs/host-test-checklist.md` for current level, selector events,
         sysfs, install, reboot, and uninstall checks
       - removed the old Rust smoke module and kept `check_kernel_rust.sh` as a
         real-driver toolchain diagnostic

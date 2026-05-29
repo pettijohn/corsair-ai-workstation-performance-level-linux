@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Corsair Performance
-Comment=Show the CORSAIR AI Workstation performance mode
+Comment=Show the CORSAIR AI Workstation performance level
 Exec=@EXEC@
-Icon=corsair-mode-balanced-symbolic
+Icon=corsair-level-balanced-symbolic
 Terminal=false
 Categories=System;HardwareSettings;
 X-GNOME-Autostart-enabled=@AUTOSTART_ENABLED@

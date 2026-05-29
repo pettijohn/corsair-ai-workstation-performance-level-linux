@@ -1,0 +1,9 @@
+[package]
+name = "corsair-performance-level-core"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-only"
+description = "Core level decoding logic for the CORSAIR AI Workstation performance level selector"
+
+[lib]
+path = "src/lib.rs"

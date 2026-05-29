@@ -1,27 +1,27 @@
-use corsair_performance_mode_core::Mode;
+use corsair_performance_level_core::Level;
 use ksni::menu::{CheckmarkItem, MenuItem, StandardItem};
 
 use crate::autostart;
-use crate::mode_ui::ModeUi;
+use crate::level_ui::LevelUi;
 
 pub const APP_TITLE: &str = "Corsair Performance";
 
 pub struct Indicator {
-    mode: Mode,
+    level: Level,
     detail: Option<String>,
     icon_theme_path: String,
     start_automatically: bool,
 }
 
 pub struct TrayUpdate {
-    pub mode: Mode,
+    pub level: Level,
     pub detail: Option<String>,
 }
 
 impl Indicator {
     pub fn new(icon_theme_path: String) -> Self {
         Self {
-            mode: Mode::Unknown,
+            level: Level::Unknown,
             detail: Some("Kernel driver may be missing".to_string()),
             icon_theme_path,
             start_automatically: autostart::is_enabled(),
@@ -29,18 +29,18 @@ impl Indicator {
     }
 
     pub fn apply(&mut self, update: TrayUpdate) {
-        self.mode = update.mode;
+        self.level = update.level;
         self.detail = update.detail;
     }
 }
 
 impl ksni::Tray for Indicator {
     // GNOME/AppIndicator hover tooltips are not dependable, so make primary
-    // click open the menu where the title and current mode are explicit.
+    // click open the menu where the title and current level are explicit.
     const MENU_ON_ACTIVATE: bool = true;
 
     fn id(&self) -> String {
-        "corsair-mode-indicator".to_string()
+        "corsair-level-indicator".to_string()
     }
 
     fn category(&self) -> ksni::Category {
@@ -60,12 +60,12 @@ impl ksni::Tray for Indicator {
     }
 
     fn icon_name(&self) -> String {
-        self.mode.icon_name().to_string()
+        self.level.icon_name().to_string()
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
         // The title item substitutes for tooltip/app identity in GNOME's
-        // indicator menu, while the disabled mode row carries live state.
+        // indicator menu, while the disabled level row carries live state.
         let mut items = vec![
             StandardItem {
                 label: APP_TITLE.to_string(),
@@ -74,7 +74,7 @@ impl ksni::Tray for Indicator {
             }
             .into(),
             StandardItem {
-                label: format!("Mode: {}", self.mode.label()),
+                label: format!("Level: {}", self.level.label()),
                 enabled: false,
                 ..Default::default()
             }

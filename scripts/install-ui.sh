@@ -2,14 +2,17 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-binary_name="corsair-mode-indicator"
+binary_name="corsair-level-indicator"
 binary="$repo_dir/target/release/$binary_name"
 bindir="${HOME}/.local/bin"
 icon_dir="${HOME}/.local/share/icons/hicolor/scalable/status"
 applications_dir="${HOME}/.local/share/applications"
 autostart_dir="${HOME}/.config/autostart"
-launcher_file="${applications_dir}/corsair-mode-indicator.desktop"
-autostart_file="${autostart_dir}/corsair-mode-indicator.desktop"
+launcher_file="${applications_dir}/corsair-level-indicator.desktop"
+autostart_file="${autostart_dir}/corsair-level-indicator.desktop"
+legacy_binary="${bindir}/corsair-mode-indicator"
+legacy_launcher_file="${applications_dir}/corsair-mode-indicator.desktop"
+legacy_autostart_file="${autostart_dir}/corsair-mode-indicator.desktop"
 
 build_ui=1
 install_ui=1
@@ -103,18 +106,23 @@ fi
 
 mkdir -p "$bindir" "$icon_dir" "$applications_dir" "$autostart_dir"
 install -m 0755 "$binary" "$bindir/$binary_name"
-install -m 0644 "$repo_dir"/icons/corsair-mode-*-symbolic.svg "$icon_dir/"
+install -m 0644 "$repo_dir"/icons/corsair-level-*-symbolic.svg "$icon_dir/"
+rm -f "$legacy_binary" "$legacy_launcher_file" "$legacy_autostart_file"
+rm -f "$icon_dir"/corsair-mode-*-symbolic.svg
 exec_value="$(desktop_exec_value "$bindir/$binary_name")"
 exec_replacement="$(sed_replacement_value "$exec_value")"
-sed "s|@EXEC@|$exec_replacement|g" "$repo_dir/packaging/corsair-mode-indicator.desktop.in" > "$launcher_file"
+sed "s|@EXEC@|$exec_replacement|g" "$repo_dir/packaging/corsair-level-indicator.desktop.in" > "$launcher_file"
 sed \
   -e "s|@EXEC@|$exec_replacement|g" \
   -e "s|@AUTOSTART_ENABLED@|$autostart_enabled|g" \
-  "$repo_dir/packaging/corsair-mode-indicator-autostart.desktop.in" > "$autostart_file"
+  "$repo_dir/packaging/corsair-level-indicator-autostart.desktop.in" > "$autostart_file"
 chmod 0644 "$launcher_file" "$autostart_file"
 
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
   gtk-update-icon-cache -q "${HOME}/.local/share/icons/hicolor" || true
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q "$applications_dir" || true
 fi
 
 cat <<EOF

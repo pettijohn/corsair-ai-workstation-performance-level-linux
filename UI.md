@@ -1,31 +1,31 @@
 Here is a design-document version you can use as a project brief.
 
-# Corsair AI Workstation GNOME Performance Mode Indicator
+# Corsair AI Workstation GNOME Performance Level Indicator
 
 ## Requirements
 
-Build a small native desktop indicator for Ubuntu 26.04 with GNOME that displays the current Corsair AI Workstation performance mode exposed by the installed kernel module:
+Build a small native desktop indicator for Ubuntu 26.04 with GNOME that displays the current Corsair AI Workstation performance level exposed by the installed kernel module:
 
 ```text
-/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode
-/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode_raw
+/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_level
+/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_level_raw
 ```
 
 The application should:
 
 * Run as a small background desktop app.
 * Show an icon in the GNOME top-right panel area.
-* Update the icon when the current performance mode changes.
+* Update the icon when the current performance level changes.
 * Avoid periodic polling.
 * Use the kernel module’s `sysfs_notify()` behavior to sleep until the sysfs value changes.
-* Provide a click/flyout menu showing the current mode name.
+* Provide a click/flyout menu showing the current level name.
 * Be scoped to Ubuntu 26.04 with GNOME, not all Linux desktops.
 * Prefer a native implementation over Electron, web UI, or heavyweight GUI frameworks.
 * Start automatically with the user’s GNOME session.
 * Allow the user to toggle GNOME session autostart from the menu.
 * Remain small, maintainable, and easy to install locally.
 
-Tooltip support is not required. GNOME/AppIndicator tooltip behavior is unreliable, so the current mode should be displayed in the flyout menu instead.
+Tooltip support is not required. GNOME/AppIndicator tooltip behavior is unreliable, so the current level should be displayed in the flyout menu instead.
 
 ## Technical Considerations
 
@@ -37,10 +37,10 @@ The application should therefore target StatusNotifierItem/AppIndicator-style in
 
 ### Tooltip Limitation
 
-Tooltips are not a dependable feature in GNOME Shell indicators. Rather than depending on hover text, the app should show the current mode in its click menu:
+Tooltips are not a dependable feature in GNOME Shell indicators. Rather than depending on hover text, the app should show the current level in its click menu:
 
 ```text
-Mode: Balanced
+Level: Balanced
 ──────────────
 Quit
 ```
@@ -49,22 +49,22 @@ This is simpler and more consistent with GNOME behavior.
 
 ### Sysfs Notification Model
 
-The kernel module exposes mode state through sysfs and emits `sysfs_notify()` when the value changes. Userspace should not reread the sysfs file on a timer.
+The kernel module exposes level state through sysfs and emits `sysfs_notify()` when the value changes. Userspace should not reread the sysfs file on a timer.
 
 Instead, the app should:
 
-1. Open the `current_mode` sysfs file.
+1. Open the `current_level` sysfs file.
 2. Read the initial value.
 3. Block in `poll()`/equivalent on the file descriptor using `POLLPRI | POLLERR`.
 4. When awakened, seek back to the start of the file.
-5. Read the new mode.
+5. Read the new level.
 6. Update the tray icon and menu.
 
 Although the syscall is named `poll()`, this is not periodic polling. The process sleeps until the kernel wakes it.
 
-### Mode Model
+### Level Model
 
-The app should parse textual modes from `current_mode`.
+The app should parse textual levels from `current_level`.
 
 Expected values:
 
@@ -76,7 +76,7 @@ super
 unknown
 ```
 
-The UI can show the exact textual mode in the menu, while mapping icons more coarsely if desired. If only three icons are desired, map `max` and `super` to the same high-performance icon.
+The UI can show the exact textual level in the menu, while mapping icons more coarsely if desired. If only three icons are desired, map `max` and `super` to the same high-performance icon.
 
 Suggested mapping:
 
@@ -94,7 +94,7 @@ The recommended implementation is a single Rust binary using:
 
 * `ksni` for StatusNotifierItem integration.
 * `nix` or a similar crate for `poll()`.
-* `crossbeam-channel` or standard channels for passing mode updates from the watcher thread to the UI/tray state.
+* `crossbeam-channel` or standard channels for passing level updates from the watcher thread to the UI/tray state.
 * Named SVG icons installed into the user icon theme.
 * A GNOME autostart `.desktop` file.
 
@@ -103,21 +103,21 @@ Recommended architecture:
 ```text
 Rust binary
   ├─ main tray/status-notifier service
-  │    ├─ owns current mode state
+  │    ├─ owns current level state
   │    ├─ exposes panel icon
   │    └─ exposes click menu
   │
   └─ watcher thread
-       ├─ opens /sys/.../current_mode
-       ├─ reads initial mode
+       ├─ opens /sys/.../current_level
+       ├─ reads initial level
        ├─ blocks in poll()
        ├─ wakes on sysfs_notify()
-       └─ sends mode changes to main app
+       └─ sends level changes to main app
 ```
 
 ### Why Rust
 
-Rust is a good fit because the application is small, long-running, and system-adjacent. It can provide a single native binary, strong type safety, clean enum modeling of modes, and direct access to Linux file descriptor APIs without needing a large runtime.
+Rust is a good fit because the application is small, long-running, and system-adjacent. It can provide a single native binary, strong type safety, clean enum modeling of levels, and direct access to Linux file descriptor APIs without needing a large runtime.
 
 Rust also gives two viable implementation styles:
 
@@ -129,31 +129,31 @@ For this project, `ksni` is the preferred first attempt because it maps directly
 ## Proposed Project Layout
 
 ```text
-corsair-mode-indicator/
+corsair-level-indicator/
   Cargo.toml
   src/
     main.rs
-    mode.rs
+    level.rs
     watcher.rs
     indicator.rs
     autostart.rs
   icons/
-    corsair-mode-quiet.svg
-    corsair-mode-balanced.svg
-    corsair-mode-max.svg
-    corsair-mode-unknown.svg
+    corsair-level-quiet.svg
+    corsair-level-balanced.svg
+    corsair-level-max.svg
+    corsair-level-unknown.svg
   packaging/
-    corsair-mode-indicator.desktop
-    corsair-mode-indicator-autostart.desktop
+    corsair-level-indicator.desktop
+    corsair-level-indicator-autostart.desktop
 ```
 
 ### Core Types
 
-Represent the mode as an enum:
+Represent the level as an enum:
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode {
+enum Level {
     Quiet,
     Balanced,
     Max,
@@ -164,7 +164,7 @@ enum Mode {
 
 The enum should provide:
 
-* `parse(&str) -> Mode`
+* `parse(&str) -> Level`
 * `label() -> &'static str`
 * `icon_name() -> &'static str`
 
@@ -181,11 +181,11 @@ Unknown
 Example icon names:
 
 ```text
-corsair-mode-quiet-symbolic
-corsair-mode-balanced-symbolic
-corsair-mode-max-symbolic
-corsair-mode-super-symbolic
-corsair-mode-unknown-symbolic
+corsair-level-quiet-symbolic
+corsair-level-balanced-symbolic
+corsair-level-max-symbolic
+corsair-level-super-symbolic
+corsair-level-unknown-symbolic
 ```
 
 ## Sysfs Watcher Design
@@ -195,16 +195,16 @@ The watcher is responsible for all interaction with the kernel module’s sysfs 
 Pseudo-flow:
 
 ```text
-open current_mode
-read initial mode
-send initial mode to UI
+open current_level
+read initial level
+send initial level to UI
 loop:
   poll(fd, POLLPRI | POLLERR, forever)
   seek fd to offset 0
-  read current_mode
-  parse mode
-  if mode changed:
-    send mode to UI
+  read current_level
+  parse level
+  if level changed:
+    send level to UI
 ```
 
 The watcher should be tolerant of transient errors but should report failures clearly when launched from a terminal. For example, if the sysfs file does not exist, the app should show `Unknown` or exit with a useful error depending on the desired behavior.
@@ -215,15 +215,15 @@ For early development, exiting with a clear error is preferable. For a polished 
 
 The indicator should expose:
 
-* ID: `corsair-mode-indicator`
-* Title: `Corsair Mode`
+* ID: `corsair-level-indicator`
+* Title: `Corsair Level`
 * Category: hardware/system service
 * Status: active
-* Icon: based on current mode
+* Icon: based on current level
 * Menu:
 
   * disabled item: `Corsair Performance`
-  * disabled item: `Mode: Balanced`
+  * disabled item: `Level: Balanced`
   * checkmark item: `Start automatically`
   * separator
   * `Quit`
@@ -232,19 +232,19 @@ Suggested menu:
 
 ```text
 Corsair Performance
-Mode: Balanced
+Level: Balanced
 Start automatically ✓
 --------------
 Quit
 ```
 
-The title and mode items should be disabled so they read as identity/status rather than clickable actions.
+The title and level items should be disabled so they read as identity/status rather than clickable actions.
 The `Start automatically` item should toggle the per-user GNOME autostart desktop entry.
 
-If the kernel module later adds a writable interface for changing performance mode, the menu could evolve into:
+If the kernel module later adds a writable interface for changing performance level, the menu could evolve into:
 
 ```text
-Current mode: Balanced
+Current level: Balanced
 ──────────────
 Quiet
 Balanced ✓
@@ -269,11 +269,11 @@ Install icons to:
 Example files:
 
 ```text
-corsair-mode-quiet-symbolic.svg
-corsair-mode-balanced-symbolic.svg
-corsair-mode-max-symbolic.svg
-corsair-mode-super-symbolic.svg
-corsair-mode-unknown-symbolic.svg
+corsair-level-quiet-symbolic.svg
+corsair-level-balanced-symbolic.svg
+corsair-level-max-symbolic.svg
+corsair-level-super-symbolic.svg
+corsair-level-unknown-symbolic.svg
 ```
 
 Then refresh the icon cache:
@@ -289,20 +289,20 @@ Using icon names keeps the tray implementation simpler and fits the GNOME/Linux 
 Install the release binary to:
 
 ```text
-~/.local/bin/corsair-mode-indicator
+~/.local/bin/corsair-level-indicator
 ```
 
 Create a normal GNOME launcher entry so the app remains discoverable even when
 autostart is disabled:
 
 ```text
-~/.local/share/applications/corsair-mode-indicator.desktop
+~/.local/share/applications/corsair-level-indicator.desktop
 ```
 
 Create a separate GNOME autostart entry:
 
 ```text
-~/.config/autostart/corsair-mode-indicator.desktop
+~/.config/autostart/corsair-level-indicator.desktop
 ```
 
 Suggested desktop entry:
@@ -310,9 +310,9 @@ Suggested desktop entry:
 ```ini
 [Desktop Entry]
 Type=Application
-Name=Corsair Mode Indicator
-Comment=Shows Corsair AI Workstation performance mode in the GNOME panel
-Exec=/home/travis/.local/bin/corsair-mode-indicator
+Name=Corsair Level Indicator
+Comment=Shows Corsair AI Workstation performance level in the GNOME panel
+Exec=/home/travis/.local/bin/corsair-level-indicator
 Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true
@@ -332,7 +332,7 @@ cargo run
 and later:
 
 ```bash
-~/.local/bin/corsair-mode-indicator
+~/.local/bin/corsair-level-indicator
 ```
 
 ## Development Plan
@@ -341,15 +341,15 @@ and later:
 
 Implement:
 
-* Mode enum.
+* Level enum.
 * Sysfs read.
 * Sysfs watcher using `poll()`.
-* Console logging on mode changes.
+* Console logging on level changes.
 
 Success condition:
 
 ```text
-Changing the hardware performance mode causes the Rust app to print the new mode without periodic polling.
+Changing the hardware performance level causes the Rust app to print the new level without periodic polling.
 ```
 
 ### Phase 2: Add Indicator
@@ -357,23 +357,23 @@ Changing the hardware performance mode causes the Rust app to print the new mode
 Add `ksni` and expose:
 
 * One panel icon.
-* One disabled menu item showing current mode.
+* One disabled menu item showing current level.
 * One quit item.
 
 Success condition:
 
 ```text
-The icon appears in the GNOME top-right panel, and clicking it shows the current mode.
+The icon appears in the GNOME top-right panel, and clicking it shows the current level.
 ```
 
 ### Phase 3: Dynamic Icon Updates
 
-Update the indicator icon and menu label whenever the watcher sends a new mode.
+Update the indicator icon and menu label whenever the watcher sends a new level.
 
 Success condition:
 
 ```text
-Changing performance mode updates the visible icon and menu text.
+Changing performance level updates the visible icon and menu text.
 ```
 
 ### Phase 4: Install and Autostart
@@ -388,7 +388,7 @@ Add:
 Success condition:
 
 ```text
-The indicator starts automatically after login and reflects the current mode.
+The indicator starts automatically after login and reflects the current level.
 ```
 
 ## Recommended Dependencies

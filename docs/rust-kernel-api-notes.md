@@ -86,9 +86,9 @@ The Rust module has moved past the initial bind/unbind skeleton. It now owns the
 active driver path:
 
 - WMI driver registration
-- method id `2` current-mode query
+- method id `2` current-level query
 - selector event filtering and decoding
-- read-only `current_mode` and `current_mode_raw` sysfs attributes
+- read-only `current_level` and `current_level_raw` sysfs attributes
 
 The old C shim has been retired from active source; its implementation history
 is available in git.

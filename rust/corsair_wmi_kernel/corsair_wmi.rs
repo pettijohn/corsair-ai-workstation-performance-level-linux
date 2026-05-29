@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
 
-//! Rust WMI driver for the CORSAIR AI Workstation performance selector.
+//! Rust WMI driver for the CORSAIR AI Workstation performance level selector.
 //!
-//! This driver is read-only: it queries method id 2 for the current mode,
-//! decodes selector events, and exposes the cached mode through sysfs.
+//! This driver is read-only: it queries method id 2 for the current level,
+//! decodes selector events, and exposes the cached level through sysfs.
 
 use core::ffi::{c_int, c_void};
 use core::mem::MaybeUninit;
@@ -13,14 +13,14 @@ use core::sync::atomic::{AtomicU8, Ordering};
 use kernel::error::to_result;
 use kernel::prelude::*;
 
-mod mode;
+mod level;
 mod wmi_ffi;
 
 const DRIVER_NAME: &[u8] = b"corsair_wmi\0";
-const METHOD_ID_CURRENT_MODE: u32 = 2;
+const METHOD_ID_CURRENT_LEVEL: u32 = 2;
 
-const CURRENT_MODE_ATTR_NAME: &[u8] = b"current_mode\0";
-const CURRENT_MODE_RAW_ATTR_NAME: &[u8] = b"current_mode_raw\0";
+const CURRENT_LEVEL_ATTR_NAME: &[u8] = b"current_level\0";
+const CURRENT_LEVEL_RAW_ATTR_NAME: &[u8] = b"current_level_raw\0";
 
 struct WmiIdTable([kernel::bindings::wmi_device_id; 3]);
 struct DeviceAttr(kernel::bindings::device_attribute);
@@ -57,22 +57,22 @@ static mut WMI_DRIVER: MaybeUninit<wmi_ffi::WmiDriver> = MaybeUninit::uninit();
 // while non-null.
 static mut METHOD_DEV_LOCK: MaybeUninit<kernel::bindings::mutex> = MaybeUninit::uninit();
 static mut METHOD_DEV: *mut kernel::bindings::device = ptr::null_mut();
-static CURRENT_MODE: AtomicU8 = AtomicU8::new(mode::Mode::Unknown as u8);
+static CURRENT_LEVEL: AtomicU8 = AtomicU8::new(level::Level::Unknown as u8);
 
-static CURRENT_MODE_ATTR: DeviceAttr = DeviceAttr(wmi_ffi::read_only_attr(
-    CURRENT_MODE_ATTR_NAME.as_ptr(),
-    current_mode_show,
+static CURRENT_LEVEL_ATTR: DeviceAttr = DeviceAttr(wmi_ffi::read_only_attr(
+    CURRENT_LEVEL_ATTR_NAME.as_ptr(),
+    current_level_show,
 ));
-static CURRENT_MODE_RAW_ATTR: DeviceAttr = DeviceAttr(wmi_ffi::read_only_attr(
-    CURRENT_MODE_RAW_ATTR_NAME.as_ptr(),
-    current_mode_raw_show,
+static CURRENT_LEVEL_RAW_ATTR: DeviceAttr = DeviceAttr(wmi_ffi::read_only_attr(
+    CURRENT_LEVEL_RAW_ATTR_NAME.as_ptr(),
+    current_level_raw_show,
 ));
 
 module! {
     type: CorsairWmi,
     name: "corsair_wmi",
     authors: ["Local driver project"],
-    description: "Read-only CORSAIR AI Workstation performance-mode WMI Rust driver",
+    description: "Read-only CORSAIR AI Workstation performance-level WMI Rust driver",
     license: "GPL",
     alias: ["wmi:8FAFC061-22DA-46E2-91DB-1FE3D7E5FF3C", "wmi:99D89064-8D50-42BB-BEA9-155B2E5D0FCD"],
 }
@@ -149,8 +149,8 @@ unsafe extern "C" fn corsair_wmi_probe(
             return ret;
         }
 
-        if let Err(ret) = query_current_mode(wdev) {
-            pr_info!("initial mode query failed ret={}\n", ret);
+        if let Err(ret) = query_current_level(wdev) {
+            pr_info!("initial level query failed ret={}\n", ret);
         }
     }
 
@@ -175,19 +175,19 @@ unsafe extern "C" fn corsair_wmi_notify_new(
         return;
     };
 
-    if !mode::is_selector_event(&payload) {
+    if !level::is_selector_event(&payload) {
         return;
     }
 
     let detail = payload[1];
-    let mode = mode::Mode::from_event_detail(detail);
+    let level = level::Level::from_event_detail(detail);
 
     pr_info!(
-        "selector event detail=0x{:02x} mode_raw={}\n",
+        "selector event detail=0x{:02x} level_raw={}\n",
         detail,
-        mode.raw_value()
+        level.raw_value()
     );
-    set_cached_mode(mode, "event");
+    set_cached_level(level, "event");
 }
 
 fn attach_method_device(wdev: *mut wmi_ffi::WmiDevice) -> c_int {
@@ -202,14 +202,14 @@ fn attach_method_device(wdev: *mut wmi_ffi::WmiDevice) -> c_int {
         return -(kernel::bindings::EBUSY as c_int);
     }
 
-    let ret = create_mode_attrs(dev);
+    let ret = create_level_attrs(dev);
     if ret != 0 {
         return ret;
     }
 
     let referenced_dev = unsafe { kernel::bindings::get_device(dev) };
     if referenced_dev.is_null() {
-        remove_mode_attrs(dev);
+        remove_level_attrs(dev);
         return -(kernel::bindings::ENODEV as c_int);
     }
 
@@ -239,60 +239,60 @@ fn detach_method_device(wdev: *mut wmi_ffi::WmiDevice) {
     if !owned_dev.is_null() {
         // METHOD_DEV is already cleared, so new notifications will not race the
         // sysfs teardown below.
-        remove_mode_attrs(dev);
+        remove_level_attrs(dev);
         unsafe {
             kernel::bindings::put_device(owned_dev);
         }
     }
 }
 
-fn create_mode_attrs(dev: *mut kernel::bindings::device) -> c_int {
+fn create_level_attrs(dev: *mut kernel::bindings::device) -> c_int {
     if dev.is_null() {
         return -(kernel::bindings::ENODEV as c_int);
     }
 
     // Attach files directly to the method WMI device, matching the public ABI
     // documented in README.md.
-    let ret = unsafe { wmi_ffi::device_create_file(dev, core::ptr::addr_of!(CURRENT_MODE_ATTR.0)) };
+    let ret = unsafe { wmi_ffi::device_create_file(dev, core::ptr::addr_of!(CURRENT_LEVEL_ATTR.0)) };
     if ret != 0 {
         return ret;
     }
 
     let ret =
-        unsafe { wmi_ffi::device_create_file(dev, core::ptr::addr_of!(CURRENT_MODE_RAW_ATTR.0)) };
+        unsafe { wmi_ffi::device_create_file(dev, core::ptr::addr_of!(CURRENT_LEVEL_RAW_ATTR.0)) };
     if ret != 0 {
         unsafe {
-            wmi_ffi::device_remove_file(dev, core::ptr::addr_of!(CURRENT_MODE_ATTR.0));
+            wmi_ffi::device_remove_file(dev, core::ptr::addr_of!(CURRENT_LEVEL_ATTR.0));
         }
     }
 
     ret
 }
 
-fn remove_mode_attrs(dev: *mut kernel::bindings::device) {
+fn remove_level_attrs(dev: *mut kernel::bindings::device) {
     if dev.is_null() {
         return;
     }
 
     unsafe {
-        wmi_ffi::device_remove_file(dev, core::ptr::addr_of!(CURRENT_MODE_RAW_ATTR.0));
-        wmi_ffi::device_remove_file(dev, core::ptr::addr_of!(CURRENT_MODE_ATTR.0));
+        wmi_ffi::device_remove_file(dev, core::ptr::addr_of!(CURRENT_LEVEL_RAW_ATTR.0));
+        wmi_ffi::device_remove_file(dev, core::ptr::addr_of!(CURRENT_LEVEL_ATTR.0));
     }
 }
 
-fn query_current_mode(wdev: *mut wmi_ffi::WmiDevice) -> core::result::Result<(), c_int> {
-    let mode = evaluate_current_mode_method(wdev)?;
+fn query_current_level(wdev: *mut wmi_ffi::WmiDevice) -> core::result::Result<(), c_int> {
+    let level = evaluate_current_level_method(wdev)?;
 
-    set_cached_mode(mode, "query");
+    set_cached_level(level, "query");
     Ok(())
 }
 
-fn evaluate_current_mode_method(wdev: *mut wmi_ffi::WmiDevice) -> core::result::Result<mode::Mode, c_int> {
+fn evaluate_current_level_method(wdev: *mut wmi_ffi::WmiDevice) -> core::result::Result<level::Level, c_int> {
     if wdev.is_null() {
         return Err(-(kernel::bindings::ENODEV as c_int));
     }
 
-    // Method id 2 is the read-only current-mode query. Method id 1 is not used
+    // Method id 2 is the read-only current-level query. Method id 1 is not used
     // by this driver because firmware treats it as a state-changing path.
     let input = kernel::bindings::acpi_buffer {
         length: 0,
@@ -307,7 +307,7 @@ fn evaluate_current_mode_method(wdev: *mut wmi_ffi::WmiDevice) -> core::result::
         wmi_ffi::wmidev_evaluate_method(
             wdev,
             0,
-            METHOD_ID_CURRENT_MODE,
+            METHOD_ID_CURRENT_LEVEL,
             core::ptr::addr_of!(input),
             core::ptr::addr_of_mut!(output),
         )
@@ -328,36 +328,36 @@ fn evaluate_current_mode_method(wdev: *mut wmi_ffi::WmiDevice) -> core::result::
     }
 
     let value = unsafe { (*obj).integer.value };
-    Ok(mode::Mode::from_query_value(value))
+    Ok(level::Level::from_query_value(value))
 }
 
-fn set_cached_mode(mode: mode::Mode, source: &'static str) {
+fn set_cached_level(level: level::Level, source: &'static str) {
     // The userspace-visible state is a single byte. Atomic storage is enough:
-    // sysfs readers see either the previous complete mode or the new one.
-    let old = CURRENT_MODE.swap(mode.raw_value(), Ordering::AcqRel);
+    // sysfs readers see either the previous complete level or the new one.
+    let old = CURRENT_LEVEL.swap(level.raw_value(), Ordering::AcqRel);
 
-    if old == mode.raw_value() {
+    if old == level.raw_value() {
         pr_info!(
-            "mode={} raw={} source={} unchanged\n",
-            mode.as_str(),
-            mode.raw_value(),
+            "level={} raw={} source={} unchanged\n",
+            level.as_str(),
+            level.raw_value(),
             source
         );
     } else {
         pr_info!(
-            "mode={} raw={} source={}\n",
-            mode.as_str(),
-            mode.raw_value(),
+            "level={} raw={} source={}\n",
+            level.as_str(),
+            level.raw_value(),
             source
         );
     }
 
-    if old != mode.raw_value() {
-        notify_mode_attrs();
+    if old != level.raw_value() {
+        notify_level_attrs();
     }
 }
 
-fn notify_mode_attrs() {
+fn notify_level_attrs() {
     let _guard = MethodDevGuard::lock();
     let dev = unsafe { METHOD_DEV };
     if dev.is_null() {
@@ -367,8 +367,8 @@ fn notify_mode_attrs() {
     unsafe {
         // Wake pollers on both human-readable and numeric sysfs files.
         let kobj = core::ptr::addr_of_mut!((*dev).kobj);
-        wmi_ffi::sysfs_notify(kobj, ptr::null(), CURRENT_MODE_ATTR_NAME.as_ptr());
-        wmi_ffi::sysfs_notify(kobj, ptr::null(), CURRENT_MODE_RAW_ATTR_NAME.as_ptr());
+        wmi_ffi::sysfs_notify(kobj, ptr::null(), CURRENT_LEVEL_ATTR_NAME.as_ptr());
+        wmi_ffi::sysfs_notify(kobj, ptr::null(), CURRENT_LEVEL_RAW_ATTR_NAME.as_ptr());
     }
 }
 
@@ -403,7 +403,7 @@ fn selector_event_payload(data: *const wmi_ffi::WmiBuffer) -> Option<[u8; 3]> {
     })
 }
 
-unsafe extern "C" fn current_mode_show(
+unsafe extern "C" fn current_level_show(
     _dev: *mut kernel::bindings::device,
     _attr: *mut kernel::bindings::device_attribute,
     buf: *mut u8,
@@ -412,13 +412,13 @@ unsafe extern "C" fn current_mode_show(
         return -(kernel::bindings::EINVAL as isize);
     }
 
-    let mode = mode::Mode::from_raw(CURRENT_MODE.load(Ordering::Acquire));
+    let level = level::Level::from_raw(CURRENT_LEVEL.load(Ordering::Acquire));
 
     // sysfs_emit() is the kernel helper that bounds writes to PAGE_SIZE.
-    unsafe { wmi_ffi::sysfs_emit(buf, b"%s\n\0".as_ptr(), mode.name_cstr()) as isize }
+    unsafe { wmi_ffi::sysfs_emit(buf, b"%s\n\0".as_ptr(), level.name_cstr()) as isize }
 }
 
-unsafe extern "C" fn current_mode_raw_show(
+unsafe extern "C" fn current_level_raw_show(
     _dev: *mut kernel::bindings::device,
     _attr: *mut kernel::bindings::device_attribute,
     buf: *mut u8,
@@ -427,9 +427,9 @@ unsafe extern "C" fn current_mode_raw_show(
         return -(kernel::bindings::EINVAL as isize);
     }
 
-    let mode = CURRENT_MODE.load(Ordering::Acquire);
+    let level = CURRENT_LEVEL.load(Ordering::Acquire);
 
-    unsafe { wmi_ffi::sysfs_emit(buf, b"%u\n\0".as_ptr(), wmi_ffi::u32_arg(mode)) as isize }
+    unsafe { wmi_ffi::sysfs_emit(buf, b"%u\n\0".as_ptr(), wmi_ffi::u32_arg(level)) as isize }
 }
 
 struct MethodDevGuard;

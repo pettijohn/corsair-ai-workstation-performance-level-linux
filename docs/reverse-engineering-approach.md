@@ -1,12 +1,12 @@
 # Reverse Engineering Approach: Windows OSD to Linux WMI Probe
 
 This document summarizes the investigation that began with the CORSAIR Windows
-Performance Mode OSD `.exe` and ended with a working read-only C kernel module.
+Performance Level OSD `.exe` and ended with a working read-only C kernel module.
 It intentionally stops before the later request to create a clean-room driver
 design/repository.
 
 The goal throughout this phase was narrow: determine whether Linux could read
-the current front-panel Performance Mode Selector state without changing it.
+the current front-panel Performance Level Selector state without changing it.
 
 ## Tools Used
 
@@ -73,7 +73,7 @@ What worked:
 
 - `innoextract` successfully exposed the installer payload.
 - The extracted app confirmed that this was a Windows on-screen-display/service
-  style utility for showing performance mode changes.
+  style utility for showing performance level changes.
 
 What did not directly solve the problem:
 
@@ -86,7 +86,7 @@ What we learned:
 
 - The Windows tool existed to display state changes, but Linux needed a direct
   read-only path.
-- The documentation's three user-facing modes were `Quiet`, `Balanced`, and
+- The documentation's three user-facing levels were `Quiet`, `Balanced`, and
   `Max`, while later firmware observations also exposed a fourth raw value that
   we called `Super`.
 
@@ -107,7 +107,7 @@ Attempt:
 - Created a Python prototype, `tools/watch_power_selector.py`.
 - Enumerated Linux WMI devices.
 - Watched ACPI GPE counters.
-- Added optional raw output and a temporary cycle-inference mode.
+- Added optional raw output and a temporary cycle-inference level.
 
 Observed WMI devices:
 
@@ -134,9 +134,9 @@ What worked:
 
 What failed or was insufficient:
 
-- Inferring mode by cycling on GPE changes was not reliable.
+- Inferring level by cycling on GPE changes was not reliable.
 - The system emitted GPE changes for reasons other than button presses.
-- Cycle inference required knowing the initial mode and tracking every press
+- Cycle inference required knowing the initial level and tracking every press
   across reboots, which was no better than doing it manually.
 
 What we learned:
@@ -162,7 +162,7 @@ Attempt:
 - Created/ran `tools/dump_wmi_bmof.sh`.
 - Dumped WMI sysfs metadata under a `decompiled/wmi-bmof` output directory.
 - Searched the dumped output with `rg` for strings such as:
-  `IP3`, `WMIEvent`, `EventDetail`, `AA`, `BA`, `BC`, `Mode`, and `Power`.
+  `IP3`, `WMIEvent`, `EventDetail`, `AA`, `BA`, `BC`, `Level`, and `Power`.
 
 Observed output:
 
@@ -182,8 +182,8 @@ What worked:
 
 What failed or was insufficient:
 
-- The BMOF/data dump did not reveal rich symbolic names for the mode state.
-- Searching the dumped output did not yield obvious strings such as `Mode` or
+- The BMOF/data dump did not reveal rich symbolic names for the level state.
+- Searching the dumped output did not yield obvious strings such as `Level` or
   `Power` beyond the object IDs.
 
 What we learned:
@@ -223,11 +223,11 @@ What worked:
 What failed or was insufficient:
 
 - ACPI inspection alone did not give us a convenient userspace API.
-- It still did not prove the exact runtime event payload values for each mode.
+- It still did not prove the exact runtime event payload values for each level.
 
 What we learned:
 
-- Method id `2` was the current-mode read path to test.
+- Method id `2` was the current-level read path to test.
 - Method id `1` should be avoided for the read-only goal because it appeared to
   be a state-changing path.
 
@@ -240,7 +240,7 @@ Next step:
 
 Question:
 
-- Can a Linux WMI driver receive the event payload and query the current mode
+- Can a Linux WMI driver receive the event payload and query the current level
   directly?
 
 Attempt:
@@ -290,7 +290,7 @@ What worked:
 
 - The module bound to both WMI devices.
 - With `query_current=1`, invoking `AA` method id `2` returned an ACPI integer.
-- Runtime logs decoded current-mode query values:
+- Runtime logs decoded current-level query values:
 
 ```text
 0 = Balanced
@@ -326,7 +326,7 @@ What we learned:
 
 - The Linux read-only path was real and did not require the Windows OSD binary.
 - The correct source of truth was:
-  - method id `2` for initial/current mode
+  - method id `2` for initial/current level
   - filtered WMI event payloads for changes
 - The selector filter needed to accept only:
 
@@ -353,7 +353,7 @@ Known WMI devices:
 05901221-D566-11D1-B2F0-00A0C9062910   data object, object id BA
 ```
 
-Known current-mode query:
+Known current-level query:
 
 ```text
 WMI method object: AA
@@ -397,12 +397,12 @@ Read-only rule:
   support once the firmware WMI interface was identified.
 - ACPI GPE counters were only a trigger hint, not a reliable state interface.
 - WMI sysfs metadata revealed the important GUID/object/notify IDs but not the
-  full mode semantics.
+  full level semantics.
 - ACPI table inspection identified the likely read-only method path.
 - A small C WMI probe was the decisive experiment because it could receive real
-  event payloads and query the current mode on actual hardware.
+  event payloads and query the current level on actual hardware.
 - Secure Boot signing was required for module loading on the target system, but
   it did not change the reverse-engineering conclusion.
 - The working design at this cutoff was a read-only Linux WMI driver that
-  queries current mode through `AA` method id `2` and updates cached state from
+  queries current level through `AA` method id `2` and updates cached state from
   filtered `BC` selector events.

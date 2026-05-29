@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 
-const DESKTOP_FILE_NAME: &str = "corsair-mode-indicator.desktop";
+const DESKTOP_FILE_NAME: &str = "corsair-level-indicator.desktop";
 
 pub fn is_enabled() -> bool {
     let Ok(contents) = fs::read_to_string(autostart_file()) else {
@@ -32,9 +32,9 @@ pub fn set_enabled(enabled: bool) -> io::Result<()> {
             "[Desktop Entry]\n\
              Type=Application\n\
              Name=Corsair Performance\n\
-             Comment=Show the CORSAIR AI Workstation performance mode\n\
+             Comment=Show the CORSAIR AI Workstation performance level\n\
              Exec={}\n\
-             Icon=corsair-mode-balanced-symbolic\n\
+             Icon=corsair-level-balanced-symbolic\n\
              Terminal=false\n\
              Categories=System;HardwareSettings;\n\
              X-GNOME-Autostart-enabled={}\n",
@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn disabled_when_no_autostart_file_exists() {
-        let unique = format!("corsair-mode-indicator-test-{}", std::process::id());
+        let unique = format!("corsair-level-indicator-test-{}", std::process::id());
         let path = std::env::temp_dir().join(unique);
         std::env::set_var("XDG_CONFIG_HOME", &path);
 
@@ -81,12 +81,12 @@ mod tests {
     #[test]
     fn quotes_exec_paths_with_spaces() {
         assert_eq!(
-            desktop_exec_value("/home/me/Corsair App/corsair-mode-indicator"),
-            "\"/home/me/Corsair App/corsair-mode-indicator\""
+            desktop_exec_value("/home/me/Corsair App/corsair-level-indicator"),
+            "\"/home/me/Corsair App/corsair-level-indicator\""
         );
         assert_eq!(
-            desktop_exec_value("/home/me/.local/bin/corsair-mode-indicator"),
-            "/home/me/.local/bin/corsair-mode-indicator"
+            desktop_exec_value("/home/me/.local/bin/corsair-level-indicator"),
+            "/home/me/.local/bin/corsair-level-indicator"
         );
     }
 }

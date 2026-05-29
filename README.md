@@ -1,49 +1,45 @@
-# CORSAIR AI Workstation Performance Mode Linux Driver
+# CORSAIR AI Workstation Performance Level Linux Driver and UI
 
 This repository is a Linux driver that exposes the CORSAIR
-AI Workstation front-panel Performance Mode Selector state.
+AI Workstation front-panel Performance Level Selector state. 
+
+The author is not affiliated with nor endorsed by Corsair.
 
 Tested on Ubuntu 26.04 with 7.0.0-15 kernel.
 
 ![Button on Corsair AI Workstation](Overview.png)
 
-The driver has read-only support to report the current performance mode:
+The driver has read-only support to report the current performance level:
 
 ```
-$ cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode
+$ cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_level
 balanced
 ```
 
 ```
 # Press the button while watching kernel messages
 $ sudo dmesg -w 
-[33373.991128] corsair_wmi: selector event detail=0x13 mode_raw=1
-[33373.991141] corsair_wmi: mode=max raw=1 source=event
-[33569.459848] corsair_wmi: selector event detail=0x11 mode_raw=2
-[33569.459858] corsair_wmi: mode=quiet raw=2 source=event
-[33572.602987] corsair_wmi: selector event detail=0x12 mode_raw=0
-[33572.603001] corsair_wmi: mode=balanced raw=0 source=event
+[33373.991128] corsair_wmi: selector event detail=0x13 level_raw=1
+[33373.991141] corsair_wmi: level=max raw=1 source=event
+[33569.459848] corsair_wmi: selector event detail=0x11 level_raw=2
+[33569.459858] corsair_wmi: level=quiet raw=2 source=event
+[33572.602987] corsair_wmi: selector event detail=0x12 level_raw=0
+[33572.603001] corsair_wmi: level=balanced raw=0 source=event
 ```
 
 ## Optional UI
 
-The optional GNOME indicator shows the current performance mode in the Ubuntu
+The optional GNOME indicator shows the current performance level in the Ubuntu
 top-right panel area. It reads:
 
 ```text
-/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode
+/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_level
 ```
 
 and waits for the driver's `sysfs_notify()` updates instead of polling on a
 timer. The click menu shows:
 
-```text
-Corsair Performance
-Mode: Balanced
-Start automatically ✓
---------------
-Quit
-```
+![Screenshot of Performance Level UI](Screenshot.png)
 
 The symbolic panel icons are intentionally simple and match the iconography on the PC case:
 
@@ -56,7 +52,7 @@ unknown  = question mark
 ```
 
 If the kernel driver is not loaded or the sysfs file is missing, the indicator
-starts in `Unknown` mode and the menu reports that the kernel driver may be
+starts in `Unknown` level and the menu reports that the kernel driver may be
 missing.
 
 To build the UI inside the dev container:
@@ -69,10 +65,10 @@ Then run the compiled binary directly from the host, without installing Rust or
 Cargo on the host:
 
 ```sh
-CORSAIR_MODE_ICON_THEME_PATH="$PWD/icons" ./target/release/corsair-mode-indicator
+CORSAIR_LEVEL_ICON_THEME_PATH="$PWD/icons" ./target/release/corsair-level-indicator
 ```
 
-`CORSAIR_MODE_ICON_THEME_PATH` lets the uninstalled app find the icons from the
+`CORSAIR_LEVEL_ICON_THEME_PATH` lets the uninstalled app find the icons from the
 repository checkout. Installed copies use the user's icon theme path instead.
 When installed, the menu's `Start automatically` item toggles GNOME login
 startup by updating the autostart desktop entry.
@@ -107,6 +103,7 @@ this on the host after `corsair_wmi.ko` exists:
 ```sh
 # In container:
 ./scripts/build.sh --sign
+
 # On host:
 ./scripts/install.sh --no-build
 ```
@@ -127,13 +124,13 @@ container and install the user-session assets from the host:
 The UI installer copies the already-built binary to:
 
 ```text
-~/.local/bin/corsair-mode-indicator
+~/.local/bin/corsair-level-indicator
 ```
 
 It also installs a GNOME application launcher entry:
 
 ```text
-~/.local/share/applications/corsair-mode-indicator.desktop
+~/.local/share/applications/corsair-level-indicator.desktop
 ```
 
 and symbolic icons under:
@@ -145,7 +142,7 @@ and symbolic icons under:
 GNOME session autostart is controlled by:
 
 ```text
-~/.config/autostart/corsair-mode-indicator.desktop
+~/.config/autostart/corsair-level-indicator.desktop
 ```
 
 The installer enables autostart by default on first install. If that file
@@ -178,7 +175,7 @@ For a fuller host validation pass, see
 Validated on one CORSAIR AI Workstation system:
 
 - The selector state is available through ACPI WMI.
-- The current mode can be queried through WMI method GUID
+- The current level can be queried through WMI method GUID
   `99D89064-8D50-42BB-BEA9-155B2E5D0FCD`, object id `AA`, method id `2`.
 - Selector change events arrive through WMI event GUID
   `8FAFC061-22DA-46E2-91DB-1FE3D7E5FF3C`, notify id `0xBC`.
@@ -186,14 +183,14 @@ Validated on one CORSAIR AI Workstation system:
 
 ```text
 byte 0: event family, expected 0x01 for selector events
-byte 1: mode/event detail
+byte 1: level/event detail
 byte 2: event subtype/status, observed 0x81 for selector events
 ```
 
-Mode mappings:
+Level mappings:
 
 ```text
-Current-mode query result:
+Current-level query result:
 0 = Balanced
 1 = Max
 2 = Quiet
@@ -213,7 +210,7 @@ One commonly observed payload is:
 01 0a 81 00 00 00 00 00
 ```
 
-That event is not a selector mode event and should be ignored by a production
+That event is not a selector level event and should be ignored by a production
 driver unless additional behavior is intentionally added for it.
 
 ## Supported Target
@@ -233,9 +230,9 @@ so the driver uses a small local FFI module for `struct wmi_driver`,
 
 ```text
 rust/corsair_wmi_kernel/         Rust WMI/sysfs kernel driver
-rust/corsair_performance_mode_core/
+rust/corsair_performance_level_core/
                                   Rust no_std-friendly decode crate
-rust/corsair_mode_indicator/      Optional GNOME StatusNotifier indicator
+rust/corsair_level_indicator/      Optional GNOME StatusNotifier indicator
 Cargo.toml                        Rust workspace manifest
 Makefile                         Convenience wrapper for the Rust module build
 rust/corsair_wmi_kernel/Makefile Kbuild file for the out-of-tree Rust module
@@ -318,12 +315,12 @@ sudo dmesg -w
 sudo insmod corsair_wmi.ko
 ```
 
-Press the front-panel selector. The driver should log decoded mode events.
+Press the front-panel selector. The driver should log decoded level events.
 It also exposes read-only sysfs attributes on the method WMI device:
 
 ```text
-/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode
-/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode_raw
+/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_level
+/sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_level_raw
 ```
 
 Unload:
@@ -344,8 +341,8 @@ cargo clippy --all-targets -- -D warnings
 
 It is deliberately small and `no_std`-friendly:
 
-- `Mode::from_query_value()`
-- `Mode::from_event_detail()`
+- `Level::from_query_value()`
+- `Level::from_event_detail()`
 - `is_selector_event()`
 - `decode_selector_event()`
 
@@ -387,8 +384,8 @@ Recommended behavior:
 
 1. Bind to both WMI devices.
 2. When the method device probes, call method id `2` on instance `0`.
-3. Decode integer return values as the current mode.
-4. Cache the current mode in driver state.
+3. Decode integer return values as the current level.
+4. Cache the current level in driver state.
 5. When the event device receives a notification, accept only selector payloads:
 
 ```text
@@ -398,16 +395,16 @@ payload[2] == 0x81
 payload[1] in { 0x11, 0x12, 0x13, 0x14 }
 ```
 
-6. Decode `payload[1]` as the new mode and update the cached mode.
-7. Notify userspace when the cached mode changes.
+6. Decode `payload[1]` as the new level and update the cached level.
+7. Notify userspace when the cached level changes.
 
 Implemented sysfs interface:
 
 ```text
-/sys/bus/wmi/devices/<method-guid>/current_mode
+/sys/bus/wmi/devices/<method-guid>/current_level
 ```
 
-The file should be read-only and return one lowercase mode name:
+The file should be read-only and return one lowercase level name:
 
 ```text
 quiet
@@ -420,7 +417,7 @@ unknown
 An optional numeric file is also useful for scripts:
 
 ```text
-/sys/bus/wmi/devices/<method-guid>/current_mode_raw
+/sys/bus/wmi/devices/<method-guid>/current_level_raw
 ```
 
 Suggested raw values:
@@ -433,12 +430,12 @@ Suggested raw values:
 255 = unknown
 ```
 
-Mode-change notifications are emitted with `sysfs_notify()` on `current_mode`
-and `current_mode_raw`. A userspace daemon can then poll the sysfs file or use
+Level-change notifications are emitted with `sysfs_notify()` on `current_level`
+and `current_level_raw`. A userspace daemon can then poll the sysfs file or use
 inotify-like mechanisms depending on the desired integration.
 
 Do not call method id `1` for read-only support. Method id `1` is treated as the
-mode setter by the firmware interface.
+level setter by the firmware interface.
 
 ## Approaches Evaluated
 
@@ -446,11 +443,11 @@ These paths were useful to understand the platform but are not recommended as
 the final implementation:
 
 - ACPI GPE counters: selector presses often incremented a GPE counter, but the
-  counter also changed for unrelated reasons and did not carry the mode value.
+  counter also changed for unrelated reasons and did not carry the level value.
 - Generic uevent monitoring from userspace: useful for seeing that WMI devices
   exist, but it did not expose the event payload.
 - WMI BMOF/data block dumps: confirmed GUID/object metadata, but did not provide
-  a reliable current-mode signal.
+  a reliable current-level signal.
 - Platform profile sysfs: the system exposed platform-profile-related kernel
   pieces, but not a usable profile state for this selector.
 
@@ -458,9 +455,9 @@ The WMI method/event path is the working approach.
 
 ## Known Open Questions
 
-- Confirm the mode mapping against firmware setup UI on additional systems.
+- Confirm the level mapping against firmware setup UI on additional systems.
 - Decide whether `Super` should be exposed as `super`, `max_plus`, or hidden as
-  an unsupported value if the product documentation only names three modes.
+  an unsupported value if the product documentation only names three levels.
 - Decide whether the sysfs node should live on the method WMI device, the event
   WMI device, or a small platform device created by the driver.
 - Decide final upstream strategy: current-kernel install script, DKMS package,

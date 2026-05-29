@@ -101,5 +101,5 @@ Installed: $install_path
 Autoload:  $modules_load_conf
 
 Verify:
-  cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_mode
+  cat /sys/bus/wmi/devices/99D89064-8D50-42BB-BEA9-155B2E5D0FCD/current_level
 EOF

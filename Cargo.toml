@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "rust/corsair_performance_mode_core",
-    "rust/corsair_mode_indicator",
+    "rust/corsair_performance_level_core",
+    "rust/corsair_level_indicator",
 ]
 resolver = "2"
 

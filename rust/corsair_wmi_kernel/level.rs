@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
 
-//! Mode decoding used by the Rust kernel driver.
+//! Level decoding used by the Rust kernel driver.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
-pub(crate) enum Mode {
+pub(crate) enum Level {
     Balanced = 0,
     Max = 1,
     Quiet = 2,
@@ -12,7 +12,7 @@ pub(crate) enum Mode {
     Unknown = 255,
 }
 
-impl Mode {
+impl Level {
     /// Convert the cached sysfs raw byte back into an enum.
     pub(crate) const fn from_raw(raw: u8) -> Self {
         match raw {

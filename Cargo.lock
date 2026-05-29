@@ -198,16 +198,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "corsair-mode-indicator"
+name = "corsair-level-indicator"
 version = "0.1.0"
 dependencies = [
- "corsair-performance-mode-core",
+ "corsair-performance-level-core",
  "ksni",
  "nix",
 ]
 
 [[package]]
-name = "corsair-performance-mode-core"
+name = "corsair-performance-level-core"
 version = "0.1.0"
 
 [[package]]
