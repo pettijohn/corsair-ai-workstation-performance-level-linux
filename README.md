@@ -68,10 +68,12 @@ module builds.
 src/corsair_wmi.c                C WMI/sysfs kernel shim
 rust/corsair_performance_mode_core/
                                   Rust no_std-friendly decode crate
+rust_kernel_probe/               Minimal Rust kernel module smoke test
 Cargo.toml                        Rust crate manifest
 Makefile                         Out-of-tree kernel module Makefile
 scripts/build.sh                 Builds the prototype module in /tmp
 scripts/sign_for_secure_boot.sh  Generates a local MOK cert and signs the module
+scripts/check_kernel_rust.sh      Checks/builds the Rust kernel smoke module
 LICENSE                          Repository license
 ```
 
@@ -83,6 +85,16 @@ generate and enroll their own key.
 The dev container installs Rust tooling plus the C/kernel tools needed for the
 prototype module. It also bind-mounts the host's `/lib/modules` and `/usr/src`
 read-only so Kbuild can find matching kernel headers.
+
+Kernel Rust builds use Ubuntu's packaged Rust compiler to match the
+`linux-lib-rust-*` kernel libraries. The dev container sets:
+
+```text
+RUST_LIB_SRC=/opt/rustc-1.93.1/library
+```
+
+That path is copied from Ubuntu's `rust-src` package during image build because
+the runtime `/usr/src` bind mount would otherwise hide the image's copy.
 
 After changing `.devcontainer/Dockerfile` or `.devcontainer/devcontainer.json`,
 rebuild the container before running the kernel module build:
@@ -164,6 +176,28 @@ It is deliberately small and `no_std`-friendly:
 The C kernel shim currently mirrors this tiny decode logic because the Linux WMI
 boundary is still C. The intent is to keep the hardware contract tested in Rust
 while the WMI/sysfs integration remains in the kernel-facing shim.
+
+## Rust Kernel Probe
+
+The target kernel has Rust enabled, and out-of-tree Rust module builds need the
+matching Ubuntu Rust compiler plus prebuilt Rust kernel libraries. Check the
+host/container setup and build the smoke module with:
+
+```sh
+./scripts/check_kernel_rust.sh
+```
+
+If the script reports missing `libcore.rmeta`, `libkernel.rmeta`, or
+`libpin_init.rmeta`, install the matching package on the host:
+
+```sh
+sudo apt install linux-lib-rust-$(uname -r)
+```
+
+Then rebuild/reopen the dev container so the `/usr/src` bind mount exposes that
+package. The dev container uses Ubuntu's packaged `rustc` rather than rustup so
+the compiler matches those kernel libraries. Once present, the script builds the
+minimal smoke module in `rust_kernel_probe/`.
 
 ## Clean-Room Driver Implementation Guide
 
@@ -266,8 +300,8 @@ A practical path is:
 
 1. Keep this C prototype as the hardware contract test.
 2. Implement the production sysfs behavior in C first or as a minimal C shim.
-3. Move non-WMI state handling and decoding into Rust if the target kernel has
-   adequate Rust support.
+3. Use `scripts/check_kernel_rust.sh` to verify that the host exposes the
+   matching Rust kernel libraries.
 4. Revisit a mostly-Rust implementation once the target kernel exposes stable
    WMI driver abstractions for Rust.
 

@@ -30,10 +30,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     mokutil \
     openssl \
     pkg-config \
+    rust-clippy \
+    rust-src \
+    rustc \
+    cargo \
+    rustfmt \
     sudo \
     sqlite3 libsqlite3-dev \
     zsh \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# /usr/src is bind-mounted from the host at runtime. Keep a copy of the Ubuntu
+# rust-src package in /opt so Kbuild can always find matching Rust stdlib source.
+RUN cp -a /usr/src/rustc-1.93.1 /opt/rustc-1.93.1
 
 RUN set -eux; \
     if getent group "${USER_GID}" >/dev/null; then \
@@ -60,8 +69,4 @@ RUN set -eux; \
 
 USER ${USERNAME}
 ENV CARGO_HOME=/home/${USERNAME}/.cargo
-ENV RUSTUP_HOME=/home/${USERNAME}/.rustup
-ENV PATH=/home/${USERNAME}/.cargo/bin:$PATH
-
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --profile minimal
+ENV RUST_LIB_SRC=/opt/rustc-1.93.1/library

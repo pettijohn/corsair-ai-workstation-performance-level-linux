@@ -24,5 +24,8 @@
   ],
   "remoteUser": "vscode",
   "updateRemoteUserUID": false,
-  "postCreateCommand": "rustup component add rustfmt clippy rust-src"
+  "remoteEnv": {
+    "RUST_LIB_SRC": "/opt/rustc-1.93.1/library"
+  },
+  "postCreateCommand": "rustc --version && cargo --version"
 }
