@@ -78,7 +78,7 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
 
    Remaining steps toward the all-Rust driver:
 
-   4.1. **Map the available Rust kernel APIs**
+   4.1. **Map the available Rust kernel APIs** `[complete]`
 
       Determine whether Ubuntu's Linux 7.0 Rust kernel crate exposes enough
       driver-model primitives for this driver:
@@ -91,11 +91,10 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
       - exported symbol access for `wmidev_evaluate_method()`
       - callback-compatible support for `struct wmi_driver`
 
-      Deliverable: a short `docs/rust-kernel-api-notes.md` summarizing which
-      pieces are safe wrappers, which require raw bindings, and which are
-      missing.
+      Deliverable: `docs/rust-kernel-api-notes.md` summarizes which pieces are
+      safe wrappers, which require raw bindings, and which are missing.
 
-   4.2. **Generate or hand-write minimal WMI FFI bindings**
+   4.2. **Generate or hand-write minimal WMI FFI bindings** `[complete]`
 
       Build the thinnest Rust representation needed to bind a `struct
       wmi_driver`:
@@ -113,9 +112,9 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
       generated bindings are too broad or unstable, hand-write a tiny local FFI
       module with exact ABI comments and compile checks.
 
-      Deliverable: `rust/corsair_wmi_kernel/src/wmi_ffi.rs` or equivalent.
+      Deliverable: `rust/corsair_wmi_kernel/wmi_ffi.rs`.
 
-   4.3. **Create a Rust WMI bind/unbind skeleton**
+   4.3. **Create a Rust WMI bind/unbind skeleton** `[complete]`
 
       Port only the binding lifecycle first:
 
@@ -127,8 +126,11 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
       - no sysfs yet
       - log enough to prove the Rust callbacks fire
 
-      Deliverable: a signed Rust `corsair_wmi.ko` that binds to both WMI GUIDs
-      and can be loaded/unloaded on the host.
+      Deliverable: a signed Rust `rust/corsair_wmi_kernel/corsair_wmi_rust.ko`
+      that binds to both WMI GUIDs and can be loaded/unloaded on the host.
+      The artifact keeps a temporary `_rust` suffix so the known-good C
+      `corsair_wmi.ko` is not replaced before the Rust query/event/sysfs port
+      is complete.
 
    4.4. **Port read-only method query**
 

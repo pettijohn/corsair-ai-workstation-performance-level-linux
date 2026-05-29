@@ -3,7 +3,7 @@ set -euo pipefail
 
 src_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 key_dir="$src_dir/mok"
-module="$src_dir/corsair_wmi.ko"
+module="${1:-$src_dir/corsair_wmi.ko}"
 sign_file="/usr/src/linux-headers-$(uname -r)/scripts/sign-file"
 key_base="$key_dir/corsair_wmi"
 
@@ -13,7 +13,7 @@ fi
 
 if [ ! -f "$module" ]; then
   echo "Missing module: $module" >&2
-  echo "Run: $src_dir/scripts/build.sh" >&2
+  echo "Run: $src_dir/scripts/build.sh or pass a built .ko path" >&2
   exit 1
 fi
 
