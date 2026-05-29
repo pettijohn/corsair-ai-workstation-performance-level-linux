@@ -8,12 +8,16 @@
 
 #![allow(dead_code, improper_ctypes)]
 
-use core::ffi::{c_char, c_int, c_void};
+use core::ffi::{c_int, c_uint, c_void};
 
 use kernel::bindings;
 
 pub(crate) const METHOD_GUID: &[u8; 37] = b"99D89064-8D50-42BB-BEA9-155B2E5D0FCD\0";
 pub(crate) const EVENT_GUID: &[u8; 37] = b"8FAFC061-22DA-46E2-91DB-1FE3D7E5FF3C\0";
+
+pub(crate) const ACPI_ALLOCATE_BUFFER: bindings::acpi_size = !0;
+pub(crate) const METHOD_CONTEXT: *const c_void = 1usize as *const c_void;
+pub(crate) const EVENT_CONTEXT: *const c_void = 2usize as *const c_void;
 
 /// WMI devices begin with `struct device`; the remaining fields are from
 /// `include/linux/wmi.h`.
@@ -21,7 +25,7 @@ pub(crate) const EVENT_GUID: &[u8; 37] = b"8FAFC061-22DA-46E2-91DB-1FE3D7E5FF3C\
 pub(crate) struct WmiDevice {
     pub dev: bindings::device,
     pub setable: bindings::bool_,
-    pub driver_override: *const c_char,
+    pub driver_override: *const u8,
 }
 
 /// Buffer passed to modern WMI event callbacks.
@@ -71,4 +75,42 @@ unsafe extern "C" {
         input: *const bindings::acpi_buffer,
         output: *mut bindings::acpi_buffer,
     ) -> bindings::acpi_status;
+
+    pub(crate) fn device_create_file(
+        device: *mut bindings::device,
+        entry: *const bindings::device_attribute,
+    ) -> c_int;
+    pub(crate) fn device_remove_file(
+        device: *mut bindings::device,
+        entry: *const bindings::device_attribute,
+    );
+    pub(crate) fn sysfs_notify(
+        kobj: *mut bindings::kobject,
+        dir: *const u8,
+        attr: *const u8,
+    );
+    pub(crate) fn sysfs_emit(buf: *mut u8, fmt: *const u8, ...) -> c_int;
+    pub(crate) fn kfree(objp: *const c_void);
+}
+
+pub(crate) const fn read_only_attr(
+    name: *const u8,
+    show: unsafe extern "C" fn(
+        dev: *mut bindings::device,
+        attr: *mut bindings::device_attribute,
+        buf: *mut u8,
+    ) -> isize,
+) -> bindings::device_attribute {
+    bindings::device_attribute {
+        attr: bindings::attribute {
+            name,
+            mode: bindings::S_IRUGO as bindings::umode_t,
+        },
+        show: Some(show),
+        store: None,
+    }
+}
+
+pub(crate) fn u32_arg(value: u8) -> c_uint {
+    value as c_uint
 }

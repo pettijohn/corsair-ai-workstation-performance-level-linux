@@ -132,7 +132,7 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
       `corsair_wmi.ko` is not replaced before the Rust query/event/sysfs port
       is complete.
 
-   4.4. **Port read-only method query**
+   4.4. **Port read-only method query** `[complete]`
 
       Implement the method-device branch in Rust:
 
@@ -142,9 +142,10 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
       - cache mode in Rust state
       - preserve the rule: never call method id `1`
 
-      Deliverable: Rust module logs current mode on load.
+      Deliverable: Rust module calls AA method id `2`, decodes the integer
+      result, caches it, and logs current mode on load.
 
-   4.5. **Port selector event handling**
+   4.5. **Port selector event handling** `[complete]`
 
       Implement the event-device branch in Rust:
 
@@ -152,9 +153,10 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
       - ignore unrelated OSD events by default
       - update cached mode from the Rust core crate
 
-      Deliverable: Rust module logs mode changes on selector presses.
+      Deliverable: Rust module filters selector events and logs/cache-updates
+      mode changes on selector presses.
 
-   4.6. **Port sysfs attributes**
+   4.6. **Port sysfs attributes** `[complete]`
 
       Expose the production ABI from Rust:
 
@@ -165,7 +167,9 @@ I reviewed `README.md`. The hardware contract is clear enough to plan from: two 
 
       Add `sysfs_notify()` equivalents on valid mode changes.
 
-      Deliverable: host-side `cat` tests pass exactly as with the C driver.
+      Deliverable: Rust module exposes the same read-only `current_mode` and
+      `current_mode_raw` attributes as the C driver. Host-side `cat` tests still
+      need to be run on hardware.
 
    4.7. **Retire the C shim**
 

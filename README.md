@@ -283,45 +283,30 @@ The WMI method/event path is the working approach.
 
 ## Rust Driver Notes
 
-The supported target is Ubuntu 26.04 with Linux 7.0+ kernels, so the project can
-lean on a modern Rust and kernel toolchain instead of carrying compatibility for
-older distributions. The remaining practical issues are kernel integration
-issues rather than old-distro support issues:
+The supported target is Ubuntu 26.04 with Linux 7.0+ kernels, so the project
+leans on the modern Rust kernel toolchain instead of carrying compatibility for
+older distributions. Ubuntu's Rust kernel package does not expose a safe WMI
+driver abstraction yet, so the Rust driver uses a small local FFI module for
+`struct wmi_driver`, `wmidev_evaluate_method()`, WMI notifications, and sysfs
+attributes.
 
-- The Linux WMI subsystem may not have complete safe Rust abstractions in the
-  target Ubuntu 26.04 kernel.
-- If WMI bindings are missing, a Rust driver may need a small C shim or custom
-  bindings around `struct wmi_driver`, `wmidev_evaluate_method()`, notify
-  callbacks, and sysfs attributes.
-- DKMS packaging for out-of-tree Rust modules is less routine than for C modules,
-  even on modern kernels.
+Build the Rust driver with:
 
-A practical path is:
-
-1. Keep this C prototype as the hardware contract test.
-2. Implement the production sysfs behavior in C first or as a minimal C shim.
-3. Use `scripts/check_kernel_rust.sh` to verify that the host exposes the
-   matching Rust kernel libraries.
-4. Revisit a mostly-Rust implementation once the target kernel exposes stable
-   WMI driver abstractions for Rust.
+```sh
+./scripts/build_rust_wmi.sh
+./scripts/sign_for_secure_boot.sh rust/corsair_wmi_kernel/corsair_wmi_rust.ko
+```
 
 ## Licensing Notes
 
-The repository license is BSD-2-Clause, but Linux kernel module integration has
-an extra constraint: the WMI functions used by this prototype are exported by
-the kernel as GPL-only symbols. A module using those symbols must declare a
-GPL-compatible kernel module license string or the kernel will reject access to
-those exports.
-
-For that reason the prototype source uses:
+The repository is GPL-2.0-only. The WMI functions used by the driver are
+exported by the kernel as GPL-only symbols, so the loadable kernel module also
+declares a GPL-compatible module license string:
 
 ```text
-SPDX-License-Identifier: BSD-2-Clause OR GPL-2.0-only
-MODULE_LICENSE("Dual BSD/GPL")
+SPDX-License-Identifier: GPL-2.0
+MODULE_LICENSE("GPL")
 ```
-
-That keeps the source available under BSD-2-Clause while also allowing the
-kernel module to use the required GPL-only WMI exports when built for Linux.
 
 ## Known Open Questions
 

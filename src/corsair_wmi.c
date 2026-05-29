@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: BSD-2-Clause OR GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Read-only WMI shim for the CORSAIR AI Workstation performance selector.
  *
@@ -345,4 +345,4 @@ module_wmi_driver(corsair_wmi_driver);
 
 MODULE_AUTHOR("Local driver prototype");
 MODULE_DESCRIPTION("Read-only CORSAIR AI Workstation performance mode WMI driver");
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_LICENSE("GPL");

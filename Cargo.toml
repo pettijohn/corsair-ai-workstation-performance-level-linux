@@ -2,7 +2,7 @@
 name = "corsair-performance-mode-core"
 version = "0.1.0"
 edition = "2021"
-license = "BSD-2-Clause OR GPL-2.0-only"
+license = "GPL-2.0-only"
 description = "Core mode decoding logic for the CORSAIR AI Workstation performance selector"
 
 [lib]
