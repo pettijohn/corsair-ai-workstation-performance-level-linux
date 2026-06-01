@@ -20,19 +20,49 @@ cat >"$out" <<'EOF'
 #define FIELD_ALIGN(type, field) __alignof__(((type *)0)->field)
 #define FIELD_SIZE(type, field) sizeof(((type *)0)->field)
 #define FIELD_END(type, field) (offsetof(type, field) + FIELD_SIZE(type, field))
+#define FIELD_TYPE_MATCHES(type, field, expected_type) \
+	static_assert(__same_type(typeof(((type *)0)->field), expected_type))
 
 static_assert(offsetof(struct wmi_device, dev) == 0);
+FIELD_TYPE_MATCHES(struct wmi_device, dev, struct device);
+FIELD_TYPE_MATCHES(struct wmi_device, setable, bool);
+FIELD_TYPE_MATCHES(struct wmi_device, driver_override, const char *);
+static_assert(__alignof__(struct wmi_device) == __alignof__(struct device));
 static_assert(offsetof(struct wmi_device, setable) == sizeof(struct device));
 static_assert(offsetof(struct wmi_device, driver_override) ==
 	      ALIGN_UP(FIELD_END(struct wmi_device, setable),
 		       FIELD_ALIGN(struct wmi_device, driver_override)));
+static_assert(sizeof(struct wmi_device) ==
+	      ALIGN_UP(FIELD_END(struct wmi_device, driver_override),
+		       __alignof__(struct wmi_device)));
 
 static_assert(offsetof(struct wmi_buffer, length) == 0);
+FIELD_TYPE_MATCHES(struct wmi_buffer, length, size_t);
+FIELD_TYPE_MATCHES(struct wmi_buffer, data, void *);
+static_assert(__alignof__(struct wmi_buffer) == __alignof__(size_t));
 static_assert(offsetof(struct wmi_buffer, data) ==
 	      ALIGN_UP(FIELD_END(struct wmi_buffer, length),
 		       FIELD_ALIGN(struct wmi_buffer, data)));
+static_assert(sizeof(struct wmi_buffer) ==
+	      ALIGN_UP(FIELD_END(struct wmi_buffer, data),
+		       __alignof__(struct wmi_buffer)));
 
 static_assert(offsetof(struct wmi_driver, driver) == 0);
+FIELD_TYPE_MATCHES(struct wmi_driver, driver, struct device_driver);
+FIELD_TYPE_MATCHES(struct wmi_driver, id_table, const struct wmi_device_id *);
+FIELD_TYPE_MATCHES(struct wmi_driver, no_notify_data, bool);
+FIELD_TYPE_MATCHES(struct wmi_driver, no_singleton, bool);
+FIELD_TYPE_MATCHES(struct wmi_driver, probe,
+		   int (*)(struct wmi_device *, const void *));
+FIELD_TYPE_MATCHES(struct wmi_driver, remove,
+		   void (*)(struct wmi_device *));
+FIELD_TYPE_MATCHES(struct wmi_driver, shutdown,
+		   void (*)(struct wmi_device *));
+FIELD_TYPE_MATCHES(struct wmi_driver, notify,
+		   void (*)(struct wmi_device *, union acpi_object *));
+FIELD_TYPE_MATCHES(struct wmi_driver, notify_new,
+		   void (*)(struct wmi_device *, const struct wmi_buffer *));
+static_assert(__alignof__(struct wmi_driver) == __alignof__(struct device_driver));
 static_assert(offsetof(struct wmi_driver, id_table) ==
 	      ALIGN_UP(FIELD_END(struct wmi_driver, driver),
 		       FIELD_ALIGN(struct wmi_driver, id_table)));
@@ -51,5 +81,8 @@ static_assert(offsetof(struct wmi_driver, notify) ==
 	      FIELD_END(struct wmi_driver, shutdown));
 static_assert(offsetof(struct wmi_driver, notify_new) ==
 	      FIELD_END(struct wmi_driver, notify));
+static_assert(sizeof(struct wmi_driver) ==
+	      ALIGN_UP(FIELD_END(struct wmi_driver, notify_new),
+		       __alignof__(struct wmi_driver)));
 
 EOF

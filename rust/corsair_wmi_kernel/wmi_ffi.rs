@@ -24,6 +24,9 @@ pub(crate) const EVENT_CONTEXT: *const c_void = 2usize as *const c_void;
 
 /// WMI devices begin with `struct device`; the remaining fields are from
 /// `include/linux/wmi.h`.
+///
+/// This hand-written mirror is guarded by the generated Kbuild ABI check in
+/// `scripts/gen_wmi_abi_check.sh`; update both files together.
 #[repr(C)]
 pub(crate) struct WmiDevice {
     pub dev: bindings::device,
@@ -32,6 +35,8 @@ pub(crate) struct WmiDevice {
 }
 
 /// Buffer passed to modern WMI event callbacks.
+///
+/// This layout is guarded by the generated Kbuild ABI check.
 #[repr(C)]
 pub(crate) struct WmiBuffer {
     pub length: usize,
@@ -39,6 +44,8 @@ pub(crate) struct WmiBuffer {
 }
 
 /// Driver registration object consumed by the Linux WMI core.
+///
+/// This layout is guarded by the generated Kbuild ABI check.
 #[repr(C)]
 pub(crate) struct WmiDriver {
     pub driver: bindings::device_driver,

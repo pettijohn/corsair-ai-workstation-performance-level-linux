@@ -8,7 +8,7 @@
 use core::ffi::{c_int, c_void};
 use core::mem::MaybeUninit;
 use core::ptr;
-use core::sync::atomic::{AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use kernel::error::to_result;
 use kernel::prelude::*;
@@ -50,6 +50,7 @@ static WMI_IDS: WmiIdTable = WmiIdTable([
 // The WMI core expects a stable `struct wmi_driver` address for the lifetime of
 // the module, so the registration object lives in static storage.
 static mut WMI_DRIVER: MaybeUninit<wmi_ffi::WmiDriver> = MaybeUninit::uninit();
+static WMI_DRIVER_REGISTERED: AtomicBool = AtomicBool::new(false);
 
 // The method WMI device owns the sysfs files. Selector events arrive on the
 // event WMI device but notify userspace through this cached method-device kobj.
@@ -103,16 +104,18 @@ impl kernel::Module for CorsairWmi {
             notify_new: Some(corsair_wmi_notify_new),
         };
 
-        let driver_ptr = core::ptr::addr_of_mut!(WMI_DRIVER).cast::<wmi_ffi::WmiDriver>();
+        let driver_ptr = wmi_driver_ptr();
         unsafe {
             // Publish the static registration object before handing its address
-            // to the WMI core. It is unregistered in Drop before module unload.
+            // to the WMI core. The registration flag is set only after the WMI
+            // core accepts it, so Drop cannot unregister a failed registration.
             driver_ptr.write(driver);
             to_result(wmi_ffi::__wmi_driver_register(
                 driver_ptr,
                 core::ptr::addr_of_mut!(kernel::bindings::__this_module),
             ))?;
         }
+        WMI_DRIVER_REGISTERED.store(true, Ordering::Release);
 
         pr_info!("registered Rust WMI driver\n");
         Ok(Self)
@@ -121,14 +124,18 @@ impl kernel::Module for CorsairWmi {
 
 impl Drop for CorsairWmi {
     fn drop(&mut self) {
-        let driver_ptr = core::ptr::addr_of_mut!(WMI_DRIVER).cast::<wmi_ffi::WmiDriver>();
-
-        unsafe {
-            wmi_ffi::wmi_driver_unregister(driver_ptr);
+        if WMI_DRIVER_REGISTERED.swap(false, Ordering::AcqRel) {
+            unsafe {
+                wmi_ffi::wmi_driver_unregister(wmi_driver_ptr());
+            }
         }
 
         pr_info!("unregistered Rust WMI driver\n");
     }
+}
+
+fn wmi_driver_ptr() -> *mut wmi_ffi::WmiDriver {
+    unsafe { core::ptr::addr_of_mut!(WMI_DRIVER).cast::<wmi_ffi::WmiDriver>() }
 }
 
 unsafe extern "C" fn corsair_wmi_probe(
