@@ -69,11 +69,31 @@ Artifacts observed:
 - `extracted/app/InstallService.bat`
 - Windows OSD/service binaries and supporting app files
 
+Clues extracted from the Windows payload:
+
+- The package was an OSD/service utility, not a firmware updater or a general
+  hardware-control suite. That narrowed the likely behavior to "listen for a
+  platform event and display the result".
+- The service/install wrapper showed that the Windows side expected a resident
+  component, which made an event-driven firmware interface more likely than a
+  one-shot command-line helper.
+- The product documentation and OSD naming established the user-visible levels:
+  `Quiet`, `Balanced`, and `Max`.
+- The Windows package did not appear to include a Linux-usable protocol
+  description or portable library. It was a clue source, not the final source of
+  truth.
+- The extracted config/readme/service files helped confirm the feature boundary:
+  show status notifications for front-panel selector changes, not provide a
+  general-purpose fan/power tuning interface.
+
 What worked:
 
 - `innoextract` successfully exposed the installer payload.
 - The extracted app confirmed that this was a Windows on-screen-display/service
   style utility for showing performance level changes.
+- The Windows material gave us names and behavior expectations to search for:
+  "performance", "power", "level/mode", OSD notification behavior, and the
+  three documented levels.
 
 What did not directly solve the problem:
 
@@ -81,6 +101,9 @@ What did not directly solve the problem:
 - The user did not need a runnable reconstruction of the Windows application.
 - The useful task became understanding the hardware/firmware interface, not
   rebuilding the Windows OSD.
+- We did not get the breakthrough by decrypting or fully decompiling the
+  Windows binary. The decisive interface was in machine firmware, discovered
+  later through ACPI/WMI inspection.
 
 What we learned:
 
@@ -202,6 +225,8 @@ Question:
 
 - Does the firmware AML show what the `AA` method does and how the `BC` event
   payload is formed?
+- Are the WMI GUIDs and object IDs coming from the Windows installer, or are
+  they native firmware interfaces exposed by the BIOS/UEFI?
 
 Attempt:
 
@@ -211,6 +236,37 @@ Attempt:
 - Searched the disassembled output for WMI GUIDs, object IDs, and method/event
   references.
 
+What the script actually queried:
+
+- This step queried the host machine's ACPI firmware tables through Linux.
+- It did not read from the extracted Windows installer and did not decompile the
+  Windows `.exe`.
+- `acpidump -b` asked the running system firmware/kernel interface for binary
+  ACPI tables such as `dsdt.dat` and `ssdt*.dat`.
+- `iasl -e ssdt*.dat -d dsdt.dat ssdt*.dat` decompiled AML bytecode from those
+  firmware tables into readable ASL text.
+- The final search pass looked through the generated ASL for WMI identifiers,
+  object IDs, GUIDs, and names suggested by the Windows payload and Linux WMI
+  sysfs metadata.
+
+Important distinction:
+
+- The Windows OSD package was a clue that a platform notification interface
+  existed.
+- The ACPI tables were the BIOS/UEFI firmware map of that interface.
+- The later C kernel module was the live runtime proof that Linux could consume
+  that interface.
+
+Search terms and why they mattered:
+
+- `PNP0C14`: ACPI WMI device hardware ID.
+- `8FAFC061-22DA-46E2-91DB-1FE3D7E5FF3C`: Linux-observed event GUID.
+- `99D89064-8D50-42BB-BEA9-155B2E5D0FCD`: Linux-observed method GUID.
+- `AA`, `BA`, `BC`: WMI object/notify IDs discovered from sysfs metadata.
+- `WMI`, `WQxx`, `WSxx`, `WMxx`: common ACPI WMI method naming patterns.
+- `IP3`, `Power`, `Mode`/`Level`, and `EventDetail`: names suggested by the
+  Windows OSD feature and early Linux observations.
+
 What worked:
 
 - ACPI inspection supported the interpretation that:
@@ -219,17 +275,53 @@ What worked:
   - method id `2` on object `AA` was read-only enough to query.
 - The C probe comments later recorded that method id `2` read firmware state
   associated with `EC0.FCMO`.
+- The fixed/manual ACPI disassembly found explicit firmware objects with names
+  like `IP3WMIEVENT` and `IP3POWERSWITCH`.
+- The ASL showed the selector/event path writing codes into `AMW0.FEBC` before
+  issuing `Notify (AMW0, 0xBC)`.
+- That matched the Linux WMI metadata where the event device had notify id
+  `BC`.
+- This connected three previously separate facts:
+  - Linux saw an event WMI GUID with notify id `BC`.
+  - Firmware ASL showed `Notify (AMW0, 0xBC)`.
+  - The selector/power-switch path wrote the event detail into a firmware WMI
+    event buffer before notification.
+
+Why this was the breakthrough:
+
+- Before this step, GPE counter changes only told us that "something happened".
+- WMI sysfs metadata told us which GUIDs existed but not what event bytes meant.
+- The ACPI disassembly showed that the Performance Level Selector had an
+  explicit firmware event path.
+- It also showed that the `BC` notify was not random; it was the firmware's WMI
+  event notification mechanism for the selector path.
+- That justified writing a kernel WMI consumer instead of continuing to infer
+  state from counters or userspace uevents.
 
 What failed or was insufficient:
 
 - ACPI inspection alone did not give us a convenient userspace API.
 - It still did not prove the exact runtime event payload values for each level.
+- Decompiled ASL can be large, split across DSDT/SSDT files, and dependent on
+  external table references. A first pass can miss the interesting methods if
+  the disassembly does not resolve all SSDT dependencies cleanly.
+- Even after finding `AMW0.FEBC` and `Notify (AMW0, 0xBC)`, we still needed a
+  live WMI callback to see the exact bytes delivered to Linux.
 
 What we learned:
 
 - Method id `2` was the current-level read path to test.
 - Method id `1` should be avoided for the read-only goal because it appeared to
   be a state-changing path.
+- The `BC` event should be consumed through the Linux WMI subsystem, not by
+  polling ACPI GPE counters.
+- The firmware was likely packaging selector event details into a small WMI
+  event buffer, later confirmed as the first three bytes of the event payload.
+- The correct next experiment was a read-only WMI kernel probe that:
+  - binds the event GUID,
+  - logs `notify_new` data,
+  - binds the method GUID,
+  - optionally invokes only method id `2`.
 
 Next step:
 
