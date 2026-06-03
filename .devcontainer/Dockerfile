@@ -42,7 +42,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # /usr/src is bind-mounted from the host at runtime. Keep a copy of the Ubuntu
 # rust-src package in /opt so Kbuild can always find matching Rust stdlib source.
-RUN cp -a /usr/src/rustc-1.93.1 /opt/rustc-1.93.1
+# Use a stable symlink so kernel patch updates do not require devcontainer edits.
+RUN set -eux; \
+    rust_src_dir="$(find /usr/src -maxdepth 1 -type d -name 'rustc-*' | sort -V | tail -n 1)"; \
+    test -n "$rust_src_dir"; \
+    cp -a "$rust_src_dir" /opt/; \
+    ln -s "/opt/$(basename "$rust_src_dir")" /opt/rustc
 
 RUN set -eux; \
     if getent group "${USER_GID}" >/dev/null; then \
@@ -69,4 +74,4 @@ RUN set -eux; \
 
 USER ${USERNAME}
 ENV CARGO_HOME=/home/${USERNAME}/.cargo
-ENV RUST_LIB_SRC=/opt/rustc-1.93.1/library
+ENV RUST_LIB_SRC=/opt/rustc/library

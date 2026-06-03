@@ -279,7 +279,7 @@ Kernel Rust builds use Ubuntu's packaged Rust compiler to match the
 `linux-lib-rust-*` kernel libraries. The dev container sets:
 
 ```text
-RUST_LIB_SRC=/opt/rustc-1.93.1/library
+RUST_LIB_SRC=/opt/rustc/library
 ```
 
 That path is copied from Ubuntu's `rust-src` package during image build because
@@ -472,4 +472,3 @@ the final implementation:
   pieces, but not a usable profile state for this selector.
 
 The WMI method/event path is the working approach.
-

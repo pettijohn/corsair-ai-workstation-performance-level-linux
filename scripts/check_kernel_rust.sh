@@ -11,6 +11,9 @@ if [ -x /usr/bin/rustc ]; then
 fi
 
 rust_src="${RUST_LIB_SRC:-$(rustc --print sysroot)/lib/rustlib/src/rust/library}"
+if [ ! -d "$rust_src/core/src" ] && [ -d /opt/rustc/library/core/src ]; then
+  rust_src="/opt/rustc/library"
+fi
 if [ ! -d "$rust_src/core/src" ] && [ -d /opt/rustc-1.93.1/library/core/src ]; then
   rust_src="/opt/rustc-1.93.1/library"
 fi
