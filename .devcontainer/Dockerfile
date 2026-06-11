@@ -37,7 +37,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rustfmt \
     sudo \
     sqlite3 libsqlite3-dev \
-    zsh \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # /usr/src is bind-mounted from the host at runtime. Keep a copy of the Ubuntu
@@ -63,13 +62,17 @@ RUN set -eux; \
         if [ "${existing_user}" != "${USERNAME}" ]; then \
             usermod -l "${USERNAME}" "${existing_user}"; \
         fi; \
-        usermod --gid "${USER_GID}" --home "/home/${USERNAME}" --move-home --shell /bin/zsh "${USERNAME}"; \
+        usermod --gid "${USER_GID}" --home "/home/${USERNAME}" --move-home --shell /bin/bash "${USERNAME}"; \
     else \
-        useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /bin/zsh "${USERNAME}"; \
+        useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /bin/bash "${USERNAME}"; \
     fi; \
     echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >"/etc/sudoers.d/${USERNAME}"; \
     chmod 0440 "/etc/sudoers.d/${USERNAME}"; \
-    mkdir -p "/home/${USERNAME}/.vscode-server"; \
+    mkdir -p "/home/${USERNAME}/.vscode-server/data/Machine"; \
+    mkdir -p "/home/${USERNAME}/.vscode-server/data/User"; \
+    mkdir -p "/home/${USERNAME}/.vscode-server/extensions"; \
+    mkdir -p "/home/${USERNAME}/.vscode-server/extensionsCache"; \
+    mkdir -p "/home/${USERNAME}/.vscode-server/bin"; \
     chown -R "${USER_UID}:${USER_GID}" "/home/${USERNAME}"
 
 USER ${USERNAME}

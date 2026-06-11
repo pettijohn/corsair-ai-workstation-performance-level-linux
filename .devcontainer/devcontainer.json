@@ -1,8 +1,15 @@
 {
   "name": "Rust",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
+  "dockerComposeFile": [
+    "docker-compose.yml",
+    "docker-compose.local.yml"
+  ],
+  "initializeCommand": ".devcontainer/init-compose-env.sh",
+  "service": "devcontainer",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "containerUser": "vscode",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": false,
   "features": {},
   "customizations": {
     "vscode": {
@@ -17,15 +24,8 @@
       }
     }
   },
-  "mounts": [
-    "source=/lib/modules,target=/lib/modules,type=bind,readonly",
-    "source=/usr/src,target=/usr/src,type=bind,readonly",
-    "source=${localEnv:HOME}/.codex,target=/home/vscode/.codex,type=bind"
-  ],
-  "remoteUser": "vscode",
-  "updateRemoteUserUID": false,
   "remoteEnv": {
     "RUST_LIB_SRC": "/opt/rustc/library"
   },
-  "postCreateCommand": "rustc --version && cargo --version"
+  "postCreateCommand": ".devcontainer/post-create.sh"
 }
