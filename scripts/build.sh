@@ -60,6 +60,28 @@ if [ ! -d "$rust_src/core/src" ]; then
   exit 1
 fi
 
+rust_lib_dir="$kdir/rust"
+missing=0
+for lib in libcore.rmeta libkernel.rmeta libpin_init.rmeta; do
+  if [ ! -e "$rust_lib_dir/$lib" ]; then
+    echo "Missing: $rust_lib_dir/$lib" >&2
+    missing=1
+  fi
+done
+
+if [ "$missing" -ne 0 ]; then
+  cat >&2 <<EOF
+
+Rust is enabled for this kernel, but the prebuilt Rust kernel libraries are not
+visible in the header tree. On Ubuntu, install the matching host package, e.g.:
+
+  sudo apt install linux-lib-rust-$(uname -r)
+
+Then rebuild/reopen the dev container so /usr/src exposes that package.
+EOF
+  exit 1
+fi
+
 RUST_LIB_SRC="$rust_src" make -C "$module_dir"
 cp "$module_dir/corsair_wmi.ko" "$repo_dir/corsair_wmi.ko"
 if [ "$sign_module" -eq 1 ]; then

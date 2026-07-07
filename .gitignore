@@ -40,3 +40,8 @@ mok/
 *.der
 *.pem
 *.crt
+
+.devcontainer/.env
+.devcontainer/local.env
+.devcontainer/docker-compose.local.yml
+.devcontainer/*.local.json

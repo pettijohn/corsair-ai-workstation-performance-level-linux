@@ -5,7 +5,7 @@ AI Workstation front-panel Performance Level Selector state.
 
 The author is not affiliated with nor endorsed by Corsair.
 
-Tested on Ubuntu 26.04 with 7.0.0-15 kernel.
+Tested on Ubuntu 26.04 with 7.0.0-15 through -27 kernels.
 
 ![Button on Corsair AI Workstation](Overview.png)
 
