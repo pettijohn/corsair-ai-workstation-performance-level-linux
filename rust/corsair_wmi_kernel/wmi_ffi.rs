@@ -31,7 +31,6 @@ pub(crate) const EVENT_CONTEXT: *const c_void = 2usize as *const c_void;
 pub(crate) struct WmiDevice {
     pub dev: bindings::device,
     pub setable: bindings::bool_,
-    pub driver_override: *const u8,
 }
 
 /// Buffer passed to modern WMI event callbacks.

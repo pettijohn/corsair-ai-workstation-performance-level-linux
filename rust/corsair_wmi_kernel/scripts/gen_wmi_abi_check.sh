@@ -26,14 +26,10 @@ cat >"$out" <<'EOF'
 static_assert(offsetof(struct wmi_device, dev) == 0);
 FIELD_TYPE_MATCHES(struct wmi_device, dev, struct device);
 FIELD_TYPE_MATCHES(struct wmi_device, setable, bool);
-FIELD_TYPE_MATCHES(struct wmi_device, driver_override, const char *);
 static_assert(__alignof__(struct wmi_device) == __alignof__(struct device));
 static_assert(offsetof(struct wmi_device, setable) == sizeof(struct device));
-static_assert(offsetof(struct wmi_device, driver_override) ==
-	      ALIGN_UP(FIELD_END(struct wmi_device, setable),
-		       FIELD_ALIGN(struct wmi_device, driver_override)));
 static_assert(sizeof(struct wmi_device) ==
-	      ALIGN_UP(FIELD_END(struct wmi_device, driver_override),
+	      ALIGN_UP(FIELD_END(struct wmi_device, setable),
 		       __alignof__(struct wmi_device)));
 
 static_assert(offsetof(struct wmi_buffer, length) == 0);

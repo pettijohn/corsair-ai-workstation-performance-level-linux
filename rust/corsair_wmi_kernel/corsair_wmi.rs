@@ -135,7 +135,7 @@ impl Drop for CorsairWmi {
 }
 
 fn wmi_driver_ptr() -> *mut wmi_ffi::WmiDriver {
-    unsafe { core::ptr::addr_of_mut!(WMI_DRIVER).cast::<wmi_ffi::WmiDriver>() }
+    core::ptr::addr_of_mut!(WMI_DRIVER).cast::<wmi_ffi::WmiDriver>()
 }
 
 unsafe extern "C" fn corsair_wmi_probe(
